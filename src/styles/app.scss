@@ -194,8 +194,16 @@ dialog {
 }
 
 @media (pointer: fine) {
-  body, button, a, input, .cursor-zoom-in, .cursor-pointer {
-    cursor: none !important;
+  /* ▼ 変更点: dialogが開いていない時だけカスタムカーソルを有効にする */
+  body:not(:has(dialog[open])) {
+    &, button, a, input, .cursor-zoom-in, .cursor-pointer {
+      cursor: none !important;
+    }
+  }
+  
+  /* ▼ 変更点: dialogが開いている時はカスタムカーソルを非表示にする */
+  body:has(dialog[open]) #custom-cursor {
+    display: none !important;
   }
 }
 @media (max-width: 1024px) {
