@@ -34,11 +34,11 @@ export async function fetchAPI(
       const json = JSON.parse(text);
       if (json.errors) {
         console.error("🚨【GraphQLエラー】:", json.errors);
-        // ▼ ここを強化！エラーがあっても、他の正常なデータ（json.data）はレスポンスとして返すように変更。
-        // これにより、一部の画像が壊れていてもサイト全体がクラッシュするのを防ぎます。
+        // ▼ エラーがあっても、他の正常なデータ（json.data）はレスポンスとして返す
+        // これにより、一部の画像が壊れていてもサイト全体がクラッシュするのを防ぎます
         return json.data || {};
       }
-      return json.data;
+      return json.data || {};
     } catch (e) {
       console.error("🚨【JSONパースエラー】");
       return {};

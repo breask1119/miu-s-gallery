@@ -3,7 +3,6 @@
 import { ClientRouter } from 'astro:transitions';
 import '../styles/app.scss';
 import { getGalleryData } from '../lib/wp';
-import SiteFooter from '../components/SiteFooter.astro';
 
 const { siteInfo, sliders, models } = await getGalleryData();
 
@@ -94,20 +93,52 @@ const getVariationsArray = (art: any) => {
     <script define:vars={{ wpGraphqlUrl }}>
       window.WP_GRAPHQL_URL = wpGraphqlUrl;
     </script>
+    <style>
+      @keyframes swipe-hand {
+        0% { transform: translateX(20px); opacity: 0; }
+        20% { opacity: 1; }
+        80% { transform: translateX(-20px); opacity: 1; }
+        100% { transform: translateX(-30px); opacity: 0; }
+      }
+      .animate-swipe-hand { animation: swipe-hand 1.5s ease-in-out infinite; }
+      /* Chrome等のスクロールバーを非表示にしつつスクロールは維持 */
+      .hide-scrollbar::-webkit-scrollbar { display: none; }
+      .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
   </head>
-  <body class="bg-[#050505] text-gray-200 antialiased selection:bg-[#F43F5E] selection:text-white overflow-hidden u-bg-noise font-light">
+  <body class="bg-[#050505] text-gray-200 antialiased selection:bg-[#F43F5E] selection:text-white max-lg:overflow-x-hidden max-lg:min-h-screen lg:overflow-hidden u-bg-noise font-light flex flex-col lg:h-[100dvh]">
     
+    <!-- ▼ カーソルのHTMLを元の構造に復活 -->
     <div id="custom-cursor" class="hidden lg:flex"><span id="cursor-text"></span></div>
 
-    <!-- ▼ JSから動的に色を変えられるように、初期の背景色と文字色のクラスを外しました -->
     <div id="global-sidebar-tooltip" class="fixed z-[150] text-xs px-3 py-1.5 rounded-lg opacity-0 transition-opacity duration-200 pointer-events-none whitespace-nowrap shadow-xl border border-white/20 font-light tracking-wide -translate-y-1/2"></div>
 
-    <main class="flex flex-col lg:flex-row h-[100dvh] w-full bg-transparent overflow-y-auto lg:overflow-hidden relative z-10">
+    <aside id="global-sns-nav" class="fixed right-4 bottom-28 z-[80] flex flex-col gap-3 lg:hidden transition-transform duration-500 ease-out">
+      <a href="https://www.instagram.com/xx.ai.girls.miu0402/" target="_blank" rel="noopener noreferrer" class="w-10 h-10 rounded-full bg-[#151518]/80 backdrop-blur-xl border border-white/10 flex items-center justify-center text-white hover:text-[#F43F5E] hover:border-[#F43F5E]/50 transition-all shadow-[0_8px_32px_0_rgba(0,0,0,0.5)]">
+        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
+      </a>
+      <a href="https://www.patreon.com/cw/u73055670?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_creator&utm_content=copyLink" target="_blank" rel="noopener noreferrer" class="w-10 h-10 rounded-full bg-[#151518]/80 backdrop-blur-xl border border-white/10 flex items-center justify-center text-white hover:text-[#F43F5E] hover:border-[#F43F5E]/50 transition-all shadow-[0_8px_32px_0_rgba(0,0,0,0.5)]">
+        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 1080 1080"><path d="M1033.05,324.45c-0.19-137.9-107.59-250.92-233.6-291.7c-156.48-50.64-362.86-43.3-512.28,27.2 C106.07,145.41,49.18,332.61,47.06,519.31c-1.74,153.5,13.58,557.79,241.62,560.67c169.44,2.15,194.67-216.18,273.07-321.33 c55.78-74.81,127.6-95.94,216.01-117.82C929.71,603.22,1033.27,483.3,1033.05,324.45z"></path></svg>
+      </a>
+    </aside>
+
+    <main class="flex-1 flex flex-col lg:flex-row w-full bg-transparent max-lg:overflow-x-hidden lg:overflow-hidden relative z-10">
       
       <section 
-        class="w-full h-[70dvh] lg:h-[100dvh] lg:w-[70%] flex-none relative bg-black overflow-hidden group cursor-zoom-in touch-manipulation select-none shadow-2xl shrink-0 order-1"
+        class="w-full h-[75svh] lg:h-full lg:w-[70%] flex-none relative bg-black overflow-hidden group cursor-zoom-in touch-manipulation select-none shadow-2xl shrink-0 order-1"
         onclick="window.handleHeroInteraction(event)"
       >
+        <div id="hero-expand-hint" class="absolute inset-0 flex items-center justify-center pointer-events-none opacity-0 transition-opacity duration-700 z-30 hidden">
+          <div class="relative flex items-center justify-center">
+            <div class="absolute w-24 h-24 bg-white/20 rounded-full animate-ping"></div>
+            <div class="absolute w-16 h-16 bg-white/30 rounded-full animate-pulse"></div>
+            <span class="relative bg-[#0A0A0C]/60 backdrop-blur-md text-white text-[10px] lg:text-xs font-medium px-4 py-2 rounded-full border border-white/20 whitespace-nowrap shadow-xl tracking-widest">
+              <span class="max-lg:hidden">CLICK TO EXPAND</span>
+              <span class="lg:hidden">TAP TO EXPAND</span>
+            </span>
+          </div>
+        </div>
+
         <div id="hero-slider-wrapper" class="w-full h-full absolute inset-0 transition-opacity duration-700 z-0">
           <div id="hero-slider" class="splide w-full h-full">
             <div class="splide__track w-full h-full">
@@ -123,10 +154,11 @@ const getVariationsArray = (art: any) => {
                       <img src={src} class="js-main-bg absolute inset-0 w-full h-full object-cover opacity-70 blur-[20px] pointer-events-none" referrerpolicy="no-referrer" />
                       <img src={src} fetchpriority="high" class="js-main-img absolute inset-0 w-full h-full object-contain z-10" referrerpolicy="no-referrer" />
                       
+                      <!-- ▼ lg:bottom-10 に統一して、下部の余白を詰める -->
                       {slide.title && (
-                        <div class="js-slide-title absolute bottom-8 right-6 lg:bottom-[120px] lg:right-12 z-20 pointer-events-none text-right">
+                        <div class="js-slide-title absolute top-20 right-4 lg:top-auto lg:bottom-10 lg:right-10 z-20 pointer-events-none text-right">
                           <h2 
-                            class="inline-block text-white text-lg lg:text-2xl font-light tracking-widest backdrop-blur-xl px-6 lg:px-8 py-3 lg:py-4 rounded-2xl shadow-[0_8px_32px_0_rgba(0,0,0,0.3)] drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]"
+                            class="inline-block text-white text-sm lg:text-2xl font-light tracking-widest backdrop-blur-xl px-4 py-2 lg:px-8 lg:py-4 rounded-xl lg:rounded-2xl shadow-[0_8px_32px_0_rgba(0,0,0,0.3)] drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]"
                             style={`background-color: ${bgColor}; border: 1px solid ${borderColor};`}
                           >
                             {slide.title}
@@ -148,16 +180,17 @@ const getVariationsArray = (art: any) => {
         
         <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-100 pointer-events-none z-10 h-1/2 mt-auto"></div>
         
-        <div class="absolute bottom-6 lg:bottom-[100px] left-0 p-6 lg:px-10 w-full pointer-events-none z-10">
-          <h1 id="hero-title" class="text-4xl lg:text-6xl font-light tracking-tighter text-transparent bg-clip-text bg-gradient-to-br from-white to-gray-500 [text-shadow:_0_4px_20px_rgb(0_0_0_/_80%)] leading-tight transition-opacity duration-300" set:html={siteInfo.title}></h1>
+        <!-- ▼ lg:bottom-10 に統一。p-6をpx-6に変更して下部の不要な余白をカット -->
+        <div class="absolute bottom-6 lg:bottom-10 left-0 px-6 lg:px-10 w-full pointer-events-none z-10">
+          <h1 id="hero-title" class="text-3xl lg:text-6xl font-light tracking-tighter text-transparent bg-clip-text bg-gradient-to-br from-white to-gray-500 [text-shadow:_0_4px_20px_rgb(0_0_0_/_80%)] leading-none transition-opacity duration-300" set:html={siteInfo.title}></h1>
           <div id="hero-bio" class="hidden mt-4 w-full pr-4 text-sm lg:text-base text-gray-200 font-light tracking-[0.1em] leading-relaxed [text-shadow:_0_2px_10px_rgb(0_0_0_/_100%)] opacity-0 transition-opacity duration-700"></div>
           <div id="hero-prompt" class="hidden mt-3 w-full pr-4 text-xs lg:text-sm text-gray-400 font-light tracking-wide leading-relaxed [text-shadow:_0_2px_10px_rgb(0_0_0_/_100%)] opacity-0 transition-opacity duration-700"></div>
         </div>
       </section>
 
-      <section class="w-full lg:w-[30%] h-auto lg:h-[100dvh] relative flex bg-[#0A0A0C]/80 backdrop-blur-xl border-l border-white/5 order-2" id="right-panel-wrapper">
+      <section class="w-full lg:w-[30%] h-auto lg:h-full relative flex flex-col bg-[#0A0A0C]/80 backdrop-blur-xl border-t lg:border-t-0 lg:border-l border-white/5 order-2" id="right-panel-wrapper">
         
-        <div class="flex-1 overflow-y-auto scroll-smooth p-5 lg:p-10 pb-28 lg:pb-[110px]" id="right-panel">
+        <div class="flex-1 lg:overflow-y-auto scroll-smooth p-5 lg:p-10 pb-32 lg:pb-[110px] hide-scrollbar transition-[padding] duration-300" id="right-panel">
           
           <div id="view-categories" class="view-section active">
             <h2 class="text-xl lg:text-2xl font-light mb-6 text-white border-b border-white/10 pb-4 tracking-tight">Models & Characters</h2>
@@ -241,8 +274,17 @@ const getVariationsArray = (art: any) => {
             <button class="js-back-btn text-gray-400 hover:text-white mb-6 flex items-center text-sm transition-colors group font-light tracking-widest uppercase" data-target="view-works">
               <span class="mr-2 transform group-hover:-translate-x-1 transition-transform">←</span> Back to Works
             </button>
-            <div class="flex overflow-x-auto lg:grid lg:grid-cols-3 xl:grid-cols-4 gap-3 lg:gap-3 mb-8 pb-4 lg:pb-0 snap-x snap-mandatory [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]" id="variation-gallery"></div>
+            <div class="flex overflow-x-auto lg:grid lg:grid-cols-3 xl:grid-cols-4 gap-3 lg:gap-3 mb-8 pb-4 lg:pb-0 snap-x snap-mandatory hide-scrollbar" id="variation-gallery"></div>
             
+            <div class="mt-8 mb-4 p-6 bg-gradient-to-br from-[#F43F5E]/10 to-[#F43F5E]/5 border border-[#F43F5E]/20 rounded-2xl flex flex-col items-center justify-center text-center gap-4 relative overflow-hidden group">
+              <div class="absolute inset-0 bg-[#F43F5E]/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500 blur-xl pointer-events-none"></div>
+              <p class="text-white/90 font-light text-sm tracking-wide relative z-10">もっとエッチなのが見たい人は<br class="sm:hidden"/>パトレオンに来てね❤</p>
+              <a href="https://www.patreon.com/cw/u73055670?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_creator&utm_content=copyLink" target="_blank" rel="noopener noreferrer" class="relative z-10 inline-flex items-center gap-2 bg-[#F43F5E] hover:bg-[#E11D48] text-white px-6 py-2.5 rounded-full text-sm font-medium transition-all duration-300 shadow-[0_4px_16px_rgba(244,63,94,0.4)] hover:shadow-[0_8px_24px_rgba(244,63,94,0.6)] transform hover:-translate-y-0.5">
+                <svg class="w-4 h-4 fill-current" viewBox="0 0 1080 1080"><path d="M1033.05,324.45c-0.19-137.9-107.59-250.92-233.6-291.7c-156.48-50.64-362.86-43.3-512.28,27.2 C106.07,145.41,49.18,332.61,47.06,519.31c-1.74,153.5,13.58,557.79,241.62,560.67c169.44,2.15,194.67-216.18,273.07-321.33 c55.78-74.81,127.6-95.94,216.01-117.82C929.71,603.22,1033.27,483.3,1033.05,324.45z"></path></svg>
+                Patreon
+              </a>
+            </div>
+
             <div class="flex lg:hidden flex-col mt-4 border-t border-white/10 pt-8 gap-10">
               <div class="flex flex-col gap-4">
                 <div class="flex items-center gap-3">
@@ -250,11 +292,6 @@ const getVariationsArray = (art: any) => {
                     <svg id="btn-like-icon-sp" viewBox="0 0 24 24" class="w-5 h-5 text-white transition-colors duration-300"><path fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
                   </button>
                   <span id="like-counter-sp" class="font-light text-white tabular-nums text-lg tracking-wider">0</span>
-                  
-                  <button class="ml-auto outline-none group transform active:scale-90 transition-transform relative" onclick="window.shareArtwork(event)">
-                    <svg class="w-5 h-5 text-gray-400 hover:text-[#F43F5E] transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path></svg>
-                    <span class="share-toast absolute -top-8 left-1/2 -translate-x-1/2 bg-white text-black text-[10px] px-2 py-1 rounded opacity-0 transition-opacity pointer-events-none whitespace-nowrap shadow-lg">Copied!</span>
-                  </button>
                 </div>
                 <button onclick="window.openCommentModal()" class="w-full bg-white/5 rounded-2xl px-5 py-4 border border-white/10 flex items-center justify-between text-left text-gray-400 hover:bg-white/10 transition-colors outline-none">
                   <span class="text-sm font-light">コメントを見る...</span>
@@ -266,37 +303,6 @@ const getVariationsArray = (art: any) => {
     
         </div>
 
-        <aside id="pc-sidebar" class="hidden max-lg:hidden absolute right-0 top-0 w-20 h-[calc(100dvh-90px)] border-l border-white/10 bg-[#151518]/90 backdrop-blur-2xl shadow-[-10px_0_30px_rgba(0,0,0,0.5)] items-center py-8 gap-6 z-10 transition-opacity duration-300 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-          {models.map((model: any) => {
-            const latestArtworkImg = secureUrl(model.artworks?.nodes?.[0]?.featuredImage?.node?.sourceUrl);
-            const avatarSrc = secureUrl(model.modelAvatar?.node?.sourceUrl) || placeholderImg;
-            const displayImage = latestArtworkImg || avatarSrc;
-            const modelColor = getValidColor(model.memberColor);
-            
-            // ▼ 明るさに応じてツールチップの文字色を判定
-            const textColors = getTextColorClasses(modelColor);
-            const isLightColor = textColors.main.includes('text-[#0A0A0C]');
-            const tooltipTextColor = isLightColor ? '#0A0A0C' : '#FFFFFF';
-
-            return (
-              <div 
-                class="relative group cursor-pointer js-nav-trigger shrink-0" 
-                data-target="view-works" 
-                data-model-id={model.id} 
-                data-title={model.name}
-                data-bio={model.modelBio || ''}
-                data-image={displayImage}
-                data-color={modelColor}
-                data-text-color={tooltipTextColor}
-                onmouseenter="window.showSidebarTooltip(this)"
-                onmouseleave="window.hideSidebarTooltip()"
-              >
-                <img src={avatarSrc} loading="lazy" decoding="async" class="w-12 h-12 rounded-full object-cover object-top border-2 border-transparent transition-colors shadow-lg" style={`--hover-color: ${modelColor};`} onmouseover="this.style.borderColor = this.style.getPropertyValue('--hover-color')" onmouseout="this.style.borderColor = 'transparent'" referrerpolicy="no-referrer" />
-              </div>
-            )
-          })}
-        </aside>
-
         <div id="interaction-footer" class="hidden max-lg:hidden absolute bottom-0 left-0 w-full h-[90px] bg-[#0A0A0C]/90 backdrop-blur-2xl border-t border-white/5 px-6 items-center gap-4 z-50">
           <button class="outline-none group transform active:scale-90 transition-transform flex items-center gap-2" onclick="window.triggerLikeAnimation(event, true)">
             <svg id="btn-like-icon" viewBox="0 0 24 24" class="w-5 h-5 text-white transition-colors duration-300"><path fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
@@ -307,16 +313,41 @@ const getVariationsArray = (art: any) => {
             <span class="text-sm font-light">コメント...</span>
             <span class="text-xs bg-white/10 group-hover:bg-[#F43F5E] text-white px-2 py-0.5 rounded-full transition-colors comment-badge-count">0</span>
           </button>
-
-          <button class="outline-none group transform active:scale-90 transition-transform relative p-2" onclick="window.shareArtwork(event)">
-            <svg class="w-5 h-5 text-gray-400 hover:text-[#F43F5E] transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path></svg>
-            <span class="share-toast absolute -top-10 left-1/2 -translate-x-1/2 bg-white text-black text-[10px] px-2 py-1 rounded opacity-0 transition-opacity pointer-events-none whitespace-nowrap shadow-lg">Copied!</span>
-          </button>
         </div>
       </section>
 
-      <div id="sp-model-nav" class="lg:hidden fixed bottom-0 left-0 w-full bg-[#151518]/90 backdrop-blur-2xl border-t border-white/10 z-[60] transition-transform duration-300 translate-y-full hidden">
-        <div class="flex overflow-x-auto gap-4 px-6 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] snap-x snap-mandatory [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+      <aside id="pc-sidebar" class="hidden max-lg:!hidden absolute right-0 top-0 w-20 border-l border-white/10 bg-[#151518]/90 backdrop-blur-2xl shadow-[-10px_0_30px_rgba(0,0,0,0.5)] items-center py-8 gap-6 z-[100] transition-opacity duration-300 overflow-y-auto hide-scrollbar">
+        {models.map((model: any) => {
+          const latestArtworkImg = secureUrl(model.artworks?.nodes?.[0]?.featuredImage?.node?.sourceUrl);
+          const avatarSrc = secureUrl(model.modelAvatar?.node?.sourceUrl) || placeholderImg;
+          const displayImage = latestArtworkImg || avatarSrc;
+          const modelColor = getValidColor(model.memberColor);
+          
+          const textColors = getTextColorClasses(modelColor);
+          const isLightColor = textColors.main.includes('text-[#0A0A0C]');
+          const tooltipTextColor = isLightColor ? '#0A0A0C' : '#FFFFFF';
+
+          return (
+            <div 
+              class="relative group cursor-pointer js-nav-trigger shrink-0" 
+              data-target="view-works" 
+              data-model-id={model.id} 
+              data-title={model.name}
+              data-bio={model.modelBio || ''}
+              data-image={displayImage}
+              data-color={modelColor}
+              data-text-color={tooltipTextColor}
+              onmouseenter="window.showSidebarTooltip(this)"
+              onmouseleave="window.hideSidebarTooltip()"
+            >
+              <img src={avatarSrc} loading="lazy" decoding="async" class="w-12 h-12 rounded-full object-cover object-top border-2 border-transparent transition-colors shadow-lg" style={`--hover-color: ${modelColor};`} onmouseover="this.style.borderColor = this.style.getPropertyValue('--hover-color')" onmouseout="this.style.borderColor = 'transparent'" referrerpolicy="no-referrer" />
+            </div>
+          )
+        })}
+      </aside>
+
+      <div id="sp-model-nav" class="lg:hidden fixed bottom-0 left-0 w-full bg-[#151518]/95 backdrop-blur-2xl border-t border-white/10 z-[110] transition-transform duration-500 translate-y-full hidden shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
+        <div class="flex overflow-x-auto gap-4 px-6 pt-3 pb-[calc(1rem+env(safe-area-inset-bottom))] snap-x snap-mandatory hide-scrollbar">
           {models.map((model: any) => {
             const latestArtworkImg = secureUrl(model.artworks?.nodes?.[0]?.featuredImage?.node?.sourceUrl);
             const avatarSrc = secureUrl(model.modelAvatar?.node?.sourceUrl) || placeholderImg;
@@ -340,15 +371,38 @@ const getVariationsArray = (art: any) => {
         </div>
       </div>
 
-      <SiteFooter 
-        siteTitle={siteInfo.title} 
-        siteDescription={siteInfo.description} 
-        siteLogo="https://api.xx-ai-girls-miu.com/wp-content/uploads/2026/04/cropped-01.png" 
-      />
-
     </main>
 
-    <dialog id="comment-modal" class="bg-transparent m-auto p-0 w-full h-full max-w-md backdrop:bg-[#050505]/90 overflow-hidden outline-none z-[120]">
+    <footer class="hidden lg:flex w-full shrink-0 z-[200] bg-[#0A0A0C]/95 backdrop-blur-lg border-t border-white/10 items-center justify-between px-4 lg:px-6 h-[calc(60px+env(safe-area-inset-bottom))] lg:h-[calc(70px+env(safe-area-inset-bottom))] pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_30px_rgba(0,0,0,0.5)] relative">
+      <div class="flex items-center gap-6 lg:gap-10">
+        <div class="flex items-center gap-3 lg:gap-4 shrink-0">
+          <div class="w-10 h-10 lg:w-12 lg:h-12 rounded-full overflow-hidden border border-[#F43F5E] p-[1px] shrink-0 bg-black">
+             <img src="https://api.xx-ai-girls-miu.com/wp-content/uploads/2026/04/cropped-01.png" alt="Miu" class="w-full h-full rounded-full object-cover" />
+          </div>
+          <div class="flex flex-col justify-center">
+            <h1 class="text-white text-base lg:text-[22px] font-medium tracking-wide leading-none mb-1">Miu'sGallery</h1>
+            <span class="text-[#F43F5E] text-[8px] lg:text-[10px] tracking-widest font-bold leading-none uppercase">AI GIRLS GALLERY</span>
+          </div>
+        </div>
+        
+        <p class="hidden xl:block text-gray-300 text-[13px] font-light tracking-widest shrink-0">
+          オリジナルキャラクターの「美羽」達の美麗な写真をお楽しみください。
+        </p>
+      </div>
+      
+      <div class="flex items-center gap-2 lg:gap-3 shrink-0">
+        <a href="https://www.instagram.com/xx.ai.girls.miu0402/" target="_blank" rel="noopener noreferrer" class="flex items-center justify-center gap-2 px-3 py-2 lg:px-5 lg:py-2 rounded-full border border-white/15 bg-white/5 text-white hover:bg-white/10 hover:border-white/30 transition-all outline-none">
+          <svg class="w-4 h-4 lg:w-5 lg:h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
+          <span class="hidden sm:block text-xs lg:text-sm font-light tracking-wide">Instagram</span>
+        </a>
+        <a href="https://www.patreon.com/cw/u73055670?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_creator&utm_content=copyLink" target="_blank" rel="noopener noreferrer" class="flex items-center justify-center gap-2 px-3 py-2 lg:px-5 lg:py-2 rounded-full border border-white/15 bg-white/5 text-white hover:bg-white/10 hover:border-white/30 transition-all outline-none">
+          <svg class="w-4 h-4 lg:w-5 lg:h-5" fill="currentColor" viewBox="0 0 1080 1080"><path d="M1033.05,324.45c-0.19-137.9-107.59-250.92-233.6-291.7c-156.48-50.64-362.86-43.3-512.28,27.2 C106.07,145.41,49.18,332.61,47.06,519.31c-1.74,153.5,13.58,557.79,241.62,560.67c169.44,2.15,194.67-216.18,273.07-321.33 c55.78-74.81,127.6-95.94,216.01-117.82C929.71,603.22,1033.27,483.3,1033.05,324.45z"></path></svg>
+          <span class="hidden sm:block text-xs lg:text-sm font-light tracking-wide">Patreon</span>
+        </a>
+      </div>
+    </footer>
+
+    <dialog id="comment-modal" class="bg-transparent m-auto p-0 w-full h-full max-w-md backdrop:bg-[#050505]/90 overflow-hidden outline-none z-[250] overscroll-contain">
       <div class="bg-[#151518] rounded-3xl border border-white/10 shadow-2xl flex flex-col h-[80vh] max-h-[700px] w-[90%] max-w-sm mx-auto mt-[10vh] overflow-hidden transform scale-95 opacity-0 transition-all duration-300" id="comment-modal-content">
         <div class="p-4 px-6 border-b border-white/5 flex justify-between items-center bg-[#0A0A0C] shrink-0">
           <h3 class="text-white font-light tracking-wide">Comments <span class="text-gray-500 text-xs ml-2" id="modal-comment-count">0</span></h3>
@@ -357,11 +411,10 @@ const getVariationsArray = (art: any) => {
           </button>
         </div>
         
-        <div class="flex-1 overflow-y-auto p-6 scroll-smooth" id="comment-list">
-          <!-- コメントがここに動的に入ります -->
+        <div class="flex-1 overflow-y-auto p-6 scroll-smooth overscroll-contain" id="comment-list">
         </div>
 
-        <div class="p-4 border-t border-white/5 bg-[#0A0A0C] shrink-0 relative">
+        <div class="p-4 border-t border-white/5 bg-[#0A0A0C] shrink-0 relative pb-[calc(1rem+env(safe-area-inset-bottom))]">
           <div id="reply-indicator" class="hidden absolute top-0 left-4 -translate-y-[calc(100%-1px)] bg-[#151518] border border-white/10 border-b-0 rounded-t-xl px-4 py-1.5 items-center gap-4 z-0 text-xs shadow-lg">
             <span class="text-gray-400 font-light"><span id="reply-indicator-name" class="text-white font-medium"></span> さんに返信中...</span>
             <button onclick="window.cancelReply()" class="text-gray-500 hover:text-[#F43F5E] outline-none p-1">✕</button>
@@ -378,21 +431,28 @@ const getVariationsArray = (art: any) => {
       </div>
     </dialog>
 
-    <dialog id="lightbox" class="bg-transparent m-auto p-0 w-full h-full max-w-none max-h-none backdrop:bg-[#050505]/95 overflow-hidden outline-none z-[100]">
-      <button onclick="window.closeLightbox()" class="fixed top-6 right-6 lg:top-12 lg:right-12 text-white hover:text-[#F43F5E] transition-colors p-3 rounded-full z-[120] bg-white/5 backdrop-blur-md border border-white/10">
+    <dialog id="lightbox" class="bg-transparent m-auto p-0 w-full h-full max-w-none max-h-none backdrop:bg-[#050505]/95 overflow-hidden outline-none z-[250] overscroll-contain">
+      <div id="swipe-hint" class="absolute inset-0 flex items-center justify-center pointer-events-none z-[260] lg:hidden opacity-0 transition-opacity duration-500">
+        <div class="bg-[#0A0A0C]/70 backdrop-blur-md px-6 py-4 rounded-3xl flex flex-col items-center gap-3 border border-white/10 shadow-2xl">
+          <svg class="w-8 h-8 text-white animate-swipe-hand" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"></path></svg>
+          <span class="text-white text-xs tracking-widest font-light">SWIPE / PINCH</span>
+        </div>
+      </div>
+
+      <button onclick="window.closeLightbox()" class="fixed top-6 right-6 lg:top-12 lg:right-12 text-white hover:text-[#F43F5E] transition-colors p-3 rounded-full z-[260] bg-white/5 backdrop-blur-md border border-white/10">
         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
       </button>
 
-      <button id="lightbox-prev" class="fixed left-4 lg:left-8 top-1/2 -translate-y-1/2 z-[120] text-white hover:text-[#F43F5E] p-3 lg:p-4 rounded-full bg-black/50 backdrop-blur-md border border-white/10 hidden transition-colors outline-none" onclick="window.prevLightboxImage(event)">
+      <button id="lightbox-prev" class="fixed left-4 lg:left-8 top-1/2 -translate-y-1/2 z-[260] text-white hover:text-[#F43F5E] p-3 lg:p-4 rounded-full bg-black/50 backdrop-blur-md border border-white/10 hidden max-lg:!hidden transition-colors outline-none" onclick="window.prevLightboxImage(event)">
         <svg class="w-6 h-6 lg:w-8 lg:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
       </button>
-      <button id="lightbox-next" class="fixed right-4 lg:right-8 top-1/2 -translate-y-1/2 z-[120] text-white hover:text-[#F43F5E] p-3 lg:p-4 rounded-full bg-black/50 backdrop-blur-md border border-white/10 hidden transition-colors outline-none" onclick="window.nextLightboxImage(event)">
+      <button id="lightbox-next" class="fixed right-4 lg:right-8 top-1/2 -translate-y-1/2 z-[260] text-white hover:text-[#F43F5E] p-3 lg:p-4 rounded-full bg-black/50 backdrop-blur-md border border-white/10 hidden max-lg:!hidden transition-colors outline-none" onclick="window.nextLightboxImage(event)">
         <svg class="w-6 h-6 lg:w-8 lg:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
       </button>
 
-      <div id="lightbox-container" class="relative w-full h-full overflow-auto flex cursor-grab active:cursor-grabbing select-none z-[100] touch-none">
-        <div class="m-auto w-full h-full flex items-center justify-center p-4 lg:p-12 transition-transform duration-300 pointer-events-none" id="lightbox-scale-wrapper">
-          <img id="lightbox-img" src="" class="max-h-[90vh] max-w-full w-auto h-auto shadow-2xl transition-all duration-500 ease-out pointer-events-auto" referrerpolicy="no-referrer" />
+      <div id="lightbox-container" class="relative w-full h-full overflow-auto flex cursor-grab active:cursor-grabbing select-none z-[250] touch-none hide-scrollbar">
+        <div class="m-auto w-full h-full flex items-center justify-center p-4 lg:p-12 pointer-events-none" id="lightbox-scale-wrapper">
+          <img id="lightbox-img" src="" class="max-h-[90vh] max-w-full w-auto h-auto shadow-2xl transition-transform duration-200 ease-out pointer-events-auto origin-center" referrerpolicy="no-referrer" />
         </div>
       </div>
     </dialog>
@@ -400,16 +460,16 @@ const getVariationsArray = (art: any) => {
     <script src="https://cdn.jsdelivr.net/npm/@splidejs/splide@4.1.4/dist/js/splide.min.js"></script>
 
     <script is:inline>
-      let clickTimer = null;
-      let lastTapTime = 0;
-      let heroSlider = null;
-      let currentModelData = { databaseId: 0, title: '', bio: '', prompt: '', image: '', likes: 0, comments: [], color: '#F43F5E' };
-      let activeReplyId = 0; 
+      window.appState = window.appState || {
+        clickTimer: null,
+        lastTapTime: 0,
+        heroSlider: null,
+        currentModelData: { databaseId: 0, title: '', bio: '', prompt: '', image: '', likes: 0, comments: [], color: '#F43F5E' },
+        activeReplyId: 0,
+        lightboxScale: 1,
+        isEventsBound: false
+      };
 
-      /**
-       * サイドバーのアイコンホバー時に表示されるツールチップの制御関数です。
-       * メンバーカラーを取得して背景色と文字色を動的に変更します。
-       */
       window.showSidebarTooltip = (el) => {
         const tooltip = document.getElementById('global-sidebar-tooltip');
         if(!tooltip) return;
@@ -420,7 +480,6 @@ const getVariationsArray = (art: any) => {
         tooltip.textContent = el.getAttribute('data-title');
         tooltip.style.backgroundColor = color;
         tooltip.style.color = textColor;
-        // ▼ 白文字の時はドロップシャドウを薄くかけて可読性を担保
         tooltip.style.textShadow = textColor === '#FFFFFF' ? '0 1px 2px rgba(0,0,0,0.8)' : 'none';
         
         tooltip.style.top = (rect.top + rect.height / 2) + 'px';
@@ -435,8 +494,13 @@ const getVariationsArray = (art: any) => {
       };
 
       document.addEventListener('astro:page-load', () => {
-        if (window.Splide) {
-          heroSlider = new window.Splide('#hero-slider', {
+        
+        if (window.appState.heroSlider) {
+          window.appState.heroSlider.destroy();
+          window.appState.heroSlider = null;
+        }
+        if (window.Splide && document.getElementById('hero-slider')) {
+          window.appState.heroSlider = new window.Splide('#hero-slider', {
             type: 'loop', drag: true, arrows: false, pagination: true, autoplay: true, interval: 5000, pauseOnHover: true, speed: 1600, easing: 'cubic-bezier(0.25, 1, 0.5, 1)',
           }).mount();
         }
@@ -450,24 +514,57 @@ const getVariationsArray = (art: any) => {
         const pcFooter = document.getElementById('interaction-footer');
         const pcSidebar = document.getElementById('pc-sidebar');
         const spModelNav = document.getElementById('sp-model-nav');
+        const heroExpandHint = document.getElementById('hero-expand-hint');
         const defaultSiteTitle = heroTitle ? heroTitle.innerHTML : '';
 
         if (pcSidebar) {
           pcSidebar.addEventListener('scroll', window.hideSidebarTooltip, { passive: true });
         }
 
-        document.addEventListener('keydown', (e) => {
-          const lightbox = document.getElementById('lightbox');
-          if (lightbox && lightbox.open) {
-            if (e.key === 'ArrowRight') {
-              window.nextLightboxImage();
-            } else if (e.key === 'ArrowLeft') {
-              window.prevLightboxImage();
-            } else if (e.key === 'Escape') {
-              window.closeLightbox();
+        if (!window.appState.isEventsBound) {
+          document.addEventListener('keydown', (e) => {
+            const lightbox = document.getElementById('lightbox');
+            if (lightbox && lightbox.open) {
+              if (e.key === 'ArrowRight') window.nextLightboxImage();
+              else if (e.key === 'ArrowLeft') window.prevLightboxImage();
+              else if (e.key === 'Escape') window.closeLightbox();
             }
+          });
+
+          // ▼ カスタムカーソルのJS処理を元々の記述（is-hover, is-viewを使う形）に復活
+          const cursor = document.getElementById('custom-cursor');
+          const cursorText = document.getElementById('cursor-text');
+          
+          if (window.matchMedia("(pointer: fine)").matches) {
+            document.addEventListener('mousemove', (e) => {
+              if(!cursor) return;
+              cursor.style.left = e.clientX + 'px';
+              cursor.style.top = e.clientY + 'px';
+            });
+            
+            document.addEventListener('mouseover', (e) => {
+              if(!cursor || !cursorText) return;
+              if(e.target.closest('button, a, input, .js-nav-trigger, .js-work-item, .js-variation-img')) {
+                 cursor.classList.add('is-hover');
+                 cursorText.textContent = '';
+              } else if (e.target.closest('#hero-slider-wrapper, #hero-static-wrapper, #lightbox-container')) {
+                 cursor.classList.add('is-view');
+                 cursorText.textContent = 'VIEW';
+              }
+            });
+
+            document.addEventListener('mouseout', (e) => {
+              if(!cursor || !cursorText) return;
+              if(e.target.closest('button, a, input, .js-nav-trigger, .js-work-item, .js-variation-img')) {
+                 cursor.classList.remove('is-hover');
+              } else if (e.target.closest('#hero-slider-wrapper, #hero-static-wrapper, #lightbox-container')) {
+                 cursor.classList.remove('is-view');
+                 cursorText.textContent = '';
+              }
+            });
           }
-        });
+          window.appState.isEventsBound = true;
+        }
 
         const initDeepLink = () => {
           const hash = window.location.hash;
@@ -478,52 +575,6 @@ const getVariationsArray = (art: any) => {
           }
         };
         initDeepLink();
-
-        const cursor = document.getElementById('custom-cursor');
-        const cursorText = document.getElementById('cursor-text');
-        
-        if (window.matchMedia("(pointer: fine)").matches) {
-          document.addEventListener('mousemove', (e) => {
-            if(!cursor) return;
-            cursor.style.left = e.clientX + 'px';
-            cursor.style.top = e.clientY + 'px';
-          });
-          
-          document.addEventListener('mouseover', (e) => {
-            if(!cursor) return;
-            if(e.target.closest('button, a, input, .js-nav-trigger, .js-work-item, .js-variation-img')) {
-               cursor.classList.add('is-hover');
-               cursorText.textContent = '';
-            } else if (e.target.closest('#hero-slider-wrapper, #hero-static-wrapper, #lightbox-container')) {
-               cursor.classList.add('is-view');
-               cursorText.textContent = 'VIEW';
-            }
-          });
-
-          document.addEventListener('mouseout', (e) => {
-            if(!cursor) return;
-            if(e.target.closest('button, a, input, .js-nav-trigger, .js-work-item, .js-variation-img')) {
-               cursor.classList.remove('is-hover');
-            } else if (e.target.closest('#hero-slider-wrapper, #hero-static-wrapper, #lightbox-container')) {
-               cursor.classList.remove('is-view');
-               cursorText.textContent = '';
-            }
-          });
-        }
-
-        window.shareArtwork = (e) => {
-          if(e) e.stopPropagation();
-          const url = window.location.href;
-          navigator.clipboard.writeText(url).then(() => {
-            document.querySelectorAll('.share-toast').forEach(t => {
-              t.classList.remove('opacity-0');
-              setTimeout(() => t.classList.add('opacity-0'), 2000);
-            });
-          }).catch(err => {
-            console.error('Failed to copy: ', err);
-            alert('URLのコピーに失敗しました。');
-          });
-        };
 
         window.isPostLiked = (id) => {
           if(!id) return false;
@@ -540,17 +591,18 @@ const getVariationsArray = (art: any) => {
         };
 
         window.updateStatsUI = () => {
+          const state = window.appState.currentModelData;
           ['like-counter', 'like-counter-sp'].forEach(id => {
             const el = document.getElementById(id);
-            if(el) el.textContent = currentModelData.likes.toLocaleString();
+            if(el) el.textContent = state.likes.toLocaleString();
           });
 
-          const isLiked = window.isPostLiked(currentModelData.databaseId);
+          const isLiked = window.isPostLiked(state.databaseId);
           ['btn-like-icon', 'btn-like-icon-sp'].forEach(id => {
             const icon = document.getElementById(id);
             if(icon) {
-              if(isLiked) icon.classList.add(`text-[${currentModelData.color}]`, 'fill-current');
-              else icon.classList.remove(`text-[${currentModelData.color}]`, 'fill-current');
+              if(isLiked) icon.classList.add(`text-[${state.color}]`, 'fill-current');
+              else icon.classList.remove(`text-[${state.color}]`, 'fill-current');
             }
           });
           window.renderComments();
@@ -569,9 +621,9 @@ const getVariationsArray = (art: any) => {
           .then(res => res.json())
           .then(res => {
             const stats = res?.data?.liveArtworkStats;
-            if(stats && currentModelData.databaseId == postId) {
-              currentModelData.likes = stats.likeCount || 0;
-              currentModelData.comments = stats.guestComments || [];
+            if(stats && window.appState.currentModelData.databaseId == postId) {
+              window.appState.currentModelData.likes = stats.likeCount || 0;
+              window.appState.currentModelData.comments = stats.guestComments || [];
               window.updateStatsUI();
             }
           })
@@ -579,7 +631,7 @@ const getVariationsArray = (art: any) => {
         };
 
         window.setReplyTo = (parentId, authorName) => {
-          activeReplyId = parentId;
+          window.appState.activeReplyId = parentId;
           const indicator = document.getElementById('reply-indicator');
           const nameSpan = document.getElementById('reply-indicator-name');
           if (indicator && nameSpan) {
@@ -591,7 +643,7 @@ const getVariationsArray = (art: any) => {
         };
 
         window.cancelReply = () => {
-          activeReplyId = 0;
+          window.appState.activeReplyId = 0;
           const indicator = document.getElementById('reply-indicator');
           if (indicator) {
             indicator.classList.add('hidden');
@@ -600,13 +652,13 @@ const getVariationsArray = (art: any) => {
         };
 
         const buildCommentHtml = (c, isReply = false) => `
-          <div class="bg-white/5 border border-white/5 rounded-2xl p-4 ${isReply ? `ml-6 mt-2 border-l-2 border-l-[${currentModelData.color}]/50` : ''}">
+          <div class="bg-white/5 border border-white/5 rounded-2xl p-4 ${isReply ? `ml-6 mt-2 border-l-2 border-l-[${window.appState.currentModelData.color}]/50` : ''}">
             <div class="flex items-baseline justify-between mb-2">
               <span class="text-white font-medium">${c.author || '名無しさん'}</span>
               <span class="text-gray-500 text-xs">${c.date ? new Date(c.date).toLocaleDateString() : 'Just now'}</span>
             </div>
             <p class="text-gray-300 font-light leading-relaxed mb-3">${c.content}</p>
-            ${!isReply ? `<button onclick="window.setReplyTo(${c.id}, '${c.author || '名無しさん'}')" class="text-xs text-gray-500 hover:text-[${currentModelData.color}] transition-colors outline-none flex items-center gap-1"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path></svg> 返信する</button>` : ''}
+            ${!isReply ? `<button onclick="window.setReplyTo(${c.id}, '${c.author || '名無しさん'}')" class="text-xs text-gray-500 hover:text-[${window.appState.currentModelData.color}] transition-colors outline-none flex items-center gap-1"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path></svg> 返信する</button>` : ''}
           </div>
         `;
 
@@ -614,12 +666,13 @@ const getVariationsArray = (art: any) => {
           const list = document.getElementById('comment-list');
           if (!list) return;
           
-          if (currentModelData.comments.length === 0) {
+          const comments = window.appState.currentModelData.comments;
+          if (comments.length === 0) {
             list.innerHTML = '<p class="text-gray-500 font-light text-center py-10 mt-10">まだコメントはありません。<br/>最初のコメントを投稿しよう！</p>';
           } else {
-            const topComments = currentModelData.comments.filter(c => !c.parentId || c.parentId === 0);
+            const topComments = comments.filter(c => !c.parentId || c.parentId === 0);
             list.innerHTML = `<div class="space-y-4 pb-4">` + topComments.map(c => {
-              const replies = currentModelData.comments.filter(r => r.parentId === c.id);
+              const replies = comments.filter(r => r.parentId === c.id);
               let html = buildCommentHtml(c, false);
               if (replies.length > 0) {
                 html += `<div class="space-y-2 mt-2">` + replies.map(r => buildCommentHtml(r, true)).join('') + `</div>`;
@@ -628,9 +681,9 @@ const getVariationsArray = (art: any) => {
             }).join('') + `</div>`;
           }
 
-          document.querySelectorAll('.comment-badge-count').forEach(el => el.textContent = currentModelData.comments.length);
+          document.querySelectorAll('.comment-badge-count').forEach(el => el.textContent = comments.length);
           const modalCount = document.getElementById('modal-comment-count');
-          if(modalCount) modalCount.textContent = currentModelData.comments.length;
+          if(modalCount) modalCount.textContent = comments.length;
         };
 
         window.submitComment = () => {
@@ -642,7 +695,7 @@ const getVariationsArray = (art: any) => {
           const content = contentInput.value.trim();
           
           if (!content) { alert("コメントが入力されていません！"); return; }
-          if (!currentModelData.databaseId) { alert("エラー：作品のデータが取得できません。"); return; }
+          if (!window.appState.currentModelData.databaseId) { alert("エラー：作品のデータが取得できません。"); return; }
 
           submitBtn.disabled = true;
           submitBtn.textContent = '送信中...';
@@ -654,10 +707,10 @@ const getVariationsArray = (art: any) => {
               body: JSON.stringify({
                 query: `mutation SubmitComment($postId: Int!, $author: String!, $content: String!, $parentId: Int) { submitGuestComment(input: {postId: $postId, author: $author, content: $content, parentId: $parentId}) { success message } }`,
                 variables: { 
-                  postId: parseInt(currentModelData.databaseId), 
+                  postId: parseInt(window.appState.currentModelData.databaseId), 
                   author, 
                   content,
-                  parentId: activeReplyId || 0 
+                  parentId: window.appState.activeReplyId || 0 
                 }
               })
             })
@@ -666,7 +719,7 @@ const getVariationsArray = (art: any) => {
               if (data?.data?.submitGuestComment?.success) {
                 contentInput.value = '';
                 window.cancelReply(); 
-                window.fetchLiveStats(currentModelData.databaseId);
+                window.fetchLiveStats(window.appState.currentModelData.databaseId);
                 const list = document.getElementById('comment-list');
                 setTimeout(() => list.scrollTop = list.scrollHeight, 300);
               } else {
@@ -705,12 +758,13 @@ const getVariationsArray = (art: any) => {
         window.toggleHeroMode = (mode) => { 
           const sliderWrapper = document.getElementById('hero-slider-wrapper');
           const staticWrapper = document.getElementById('hero-static-wrapper');
+          const slider = window.appState.heroSlider;
           if (mode === 'static') {
-            if (heroSlider && heroSlider.Components.Autoplay) heroSlider.Components.Autoplay.pause();
+            if (slider && slider.Components.Autoplay) slider.Components.Autoplay.pause();
             if(sliderWrapper) { sliderWrapper.classList.add('opacity-0'); setTimeout(() => sliderWrapper.classList.add('hidden'), 700); }
             if(staticWrapper) { staticWrapper.classList.remove('hidden'); setTimeout(() => staticWrapper.classList.remove('opacity-0'), 50); }
           } else {
-            if (heroSlider && heroSlider.Components.Autoplay) heroSlider.Components.Autoplay.play();
+            if (slider && slider.Components.Autoplay) slider.Components.Autoplay.play();
             if(staticWrapper) { staticWrapper.classList.add('opacity-0'); setTimeout(() => staticWrapper.classList.add('hidden'), 700); }
             if(sliderWrapper) { sliderWrapper.classList.remove('hidden'); setTimeout(() => sliderWrapper.classList.remove('opacity-0'), 50); }
           }
@@ -719,8 +773,8 @@ const getVariationsArray = (art: any) => {
         window.handleHeroInteraction = (e) => {
           if (e) e.stopPropagation();
           const currentTime = new Date().getTime();
-          const tapLength = currentTime - lastTapTime;
-          lastTapTime = currentTime;
+          const tapLength = currentTime - window.appState.lastTapTime;
+          window.appState.lastTapTime = currentTime;
 
           const isTopPage = document.getElementById('view-categories').classList.contains('active');
           const isDetailPage = document.getElementById('view-detail').classList.contains('active');
@@ -734,14 +788,14 @@ const getVariationsArray = (art: any) => {
             currentImgSrc = staticImg ? staticImg.src : "";
           }
 
-          if (clickTimer !== null || (tapLength < 300 && tapLength > 0)) {
-            if(clickTimer) clearTimeout(clickTimer);
-            clickTimer = null;
+          if (window.appState.clickTimer !== null || (tapLength < 300 && tapLength > 0)) {
+            if(window.appState.clickTimer) clearTimeout(window.appState.clickTimer);
+            window.appState.clickTimer = null;
             if (isDetailPage) window.triggerLikeAnimation(e);
             else if (!isDetailPage) window.openLightbox(currentImgSrc, isTopPage ? Array.from(document.querySelectorAll('.splide__slide:not(.splide__slide--clone) .js-main-img')).map(img => img.src) : [currentImgSrc]);
           } else {
-            clickTimer = setTimeout(() => {
-              clickTimer = null;
+            window.appState.clickTimer = setTimeout(() => {
+              window.appState.clickTimer = null;
               let gallery = [currentImgSrc];
               if (isTopPage) gallery = Array.from(document.querySelectorAll('.splide__slide:not(.splide__slide--clone) .js-main-img')).map(img => img.src);
               else if (isDetailPage) gallery = window.currentDetailGallery || [currentImgSrc];
@@ -751,16 +805,17 @@ const getVariationsArray = (art: any) => {
         };
 
         window.triggerLikeAnimation = (e, fromButton = false) => {
-          if (!currentModelData.databaseId) return;
-          if (window.isPostLiked(currentModelData.databaseId)) return;
+          const state = window.appState.currentModelData;
+          if (!state.databaseId) return;
+          if (window.isPostLiked(state.databaseId)) return;
 
-          window.markPostAsLiked(currentModelData.databaseId);
-          currentModelData.likes++;
+          window.markPostAsLiked(state.databaseId);
+          state.likes++;
           window.updateStatsUI();
 
           if (!fromButton) {
             const heart = document.createElement('div');
-            heart.innerHTML = `<svg viewBox="0 0 24 24" class="w-32 h-32 fill-current" style="color: ${currentModelData.color}; filter: drop-shadow(0 0 30px ${currentModelData.color});"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>`;
+            heart.innerHTML = `<svg viewBox="0 0 24 24" class="w-32 h-32 fill-current" style="color: ${state.color}; filter: drop-shadow(0 0 30px ${state.color});"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>`;
             heart.className = 'fixed pointer-events-none z-[9999] transform -translate-x-1/2 -translate-y-1/2 animate-heart-burst';
             heart.style.left = (e.clientX || window.innerWidth/2) + 'px';
             heart.style.top = (e.clientY || window.innerHeight/2) + 'px';
@@ -774,7 +829,7 @@ const getVariationsArray = (art: any) => {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 query: `mutation IncrementLike($postId: Int!) { incrementLike(input: {postId: $postId}) { newCount } }`,
-                variables: { postId: parseInt(currentModelData.databaseId) }
+                variables: { postId: parseInt(state.databaseId) }
               })
             }).catch(err => console.error('Like request failed', err));
           }
@@ -786,12 +841,20 @@ const getVariationsArray = (art: any) => {
             else { view.classList.remove('active'); setTimeout(() => { if(!view.classList.contains('active')) view.classList.add('hidden'); }, 300); }
           });
 
+          const rightPanel = document.getElementById('right-panel');
+
           if (targetId === 'view-detail') {
-            window.history.replaceState(null, '', `#work-${currentModelData.databaseId}`);
+            window.history.replaceState(null, '', `#work-${window.appState.currentModelData.databaseId}`);
             
             if(pcFooter) { pcFooter.classList.remove('hidden'); pcFooter.classList.add('lg:flex'); }
-            if(pcSidebar) { pcSidebar.classList.remove('hidden'); pcSidebar.classList.add('lg:flex-col', 'lg:flex'); }
             if(spModelNav) { spModelNav.classList.remove('hidden'); setTimeout(() => spModelNav.classList.remove('translate-y-full'), 10); }
+            if(heroExpandHint) { heroExpandHint.classList.remove('hidden'); setTimeout(() => heroExpandHint.classList.remove('opacity-0'), 800); }
+            
+            if(pcSidebar) { 
+              pcSidebar.classList.remove('hidden', 'h-full', 'h-[calc(100%-90px)]'); 
+              pcSidebar.classList.add('flex', 'flex-col', 'h-[calc(100%-90px)]'); 
+            }
+            if(rightPanel) rightPanel.classList.add('lg:pr-[100px]');
             
             window.toggleHeroMode('static');
             if(heroBio) { heroBio.classList.add('opacity-0'); setTimeout(() => heroBio.classList.add('hidden'), 300); }
@@ -803,25 +866,36 @@ const getVariationsArray = (art: any) => {
             if(newImage) window.updateHeroImage(newImage);
 
             window.updateStatsUI();
-            window.fetchLiveStats(currentModelData.databaseId);
+            window.fetchLiveStats(window.appState.currentModelData.databaseId);
 
           } else if (targetId === 'view-works') {
             window.history.replaceState(null, '', window.location.pathname);
             
             if(pcFooter) { pcFooter.classList.add('hidden'); pcFooter.classList.remove('lg:flex'); }
-            if(pcSidebar) { pcSidebar.classList.remove('hidden'); pcSidebar.classList.add('lg:flex-col', 'lg:flex'); }
             if(spModelNav) { spModelNav.classList.remove('hidden'); setTimeout(() => spModelNav.classList.remove('translate-y-full'), 10); }
+            if(heroExpandHint) { heroExpandHint.classList.add('opacity-0'); setTimeout(() => heroExpandHint.classList.add('hidden'), 300); }
+            
+            if(pcSidebar) { 
+              pcSidebar.classList.remove('hidden', 'h-[calc(100%-90px)]', 'h-full'); 
+              pcSidebar.classList.add('flex', 'flex-col', 'h-full'); 
+            }
+            if(rightPanel) rightPanel.classList.add('lg:pr-[100px]');
+            
             window.toggleHeroMode('static');
             if(heroPrompt) { heroPrompt.classList.add('opacity-0'); setTimeout(() => heroPrompt.classList.add('hidden'), 300); }
             if(newTitle && heroTitle) { heroTitle.classList.add('opacity-0'); setTimeout(() => { heroTitle.innerHTML = newTitle; heroTitle.classList.remove('opacity-0'); }, 300); }
             if(heroBio) { heroBio.classList.add('opacity-0'); setTimeout(() => { if (newBio) { heroBio.innerHTML = newBio; heroBio.classList.remove('hidden'); setTimeout(() => heroBio.classList.remove('opacity-0'), 50); } else { heroBio.classList.add('hidden'); } }, 300); }
             if(newImage) window.updateHeroImage(newImage);
+            
           } else {
             window.history.replaceState(null, '', window.location.pathname);
             
             if(pcFooter) { pcFooter.classList.add('hidden'); pcFooter.classList.remove('lg:flex'); }
-            if(pcSidebar) { pcSidebar.classList.add('hidden'); pcSidebar.classList.remove('lg:flex-col', 'lg:flex'); }
             if(spModelNav) { spModelNav.classList.add('translate-y-full'); setTimeout(() => spModelNav.classList.add('hidden'), 300); }
+            if(heroExpandHint) { heroExpandHint.classList.add('opacity-0'); setTimeout(() => heroExpandHint.classList.add('hidden'), 300); }
+            if(pcSidebar) { pcSidebar.classList.add('hidden'); pcSidebar.classList.remove('flex', 'flex-col', 'h-full', 'h-[calc(100%-90px)]'); }
+            if(rightPanel) rightPanel.classList.remove('lg:pr-[100px]');
+            
             window.toggleHeroMode('slider');
             if(heroPrompt) { heroPrompt.classList.add('opacity-0'); setTimeout(() => heroPrompt.classList.add('hidden'), 300); }
             if(heroTitle) { heroTitle.classList.add('opacity-0'); setTimeout(() => { heroTitle.innerHTML = defaultSiteTitle; heroTitle.classList.remove('opacity-0'); }, 300); }
@@ -840,7 +914,7 @@ const getVariationsArray = (art: any) => {
             const newColor = btn.getAttribute('data-color') || '#F43F5E'; 
 
             if (target === 'view-works' && modelId) {
-              currentModelData = { ...currentModelData, title: newTitle, bio: newBio, prompt: '', image: newImage, color: newColor };
+              window.appState.currentModelData = { ...window.appState.currentModelData, title: newTitle, bio: newBio, prompt: '', image: newImage, color: newColor };
               document.querySelectorAll('.js-work-item').forEach(item => { item.getAttribute('data-model-id') === modelId ? item.classList.remove('hidden') : item.classList.add('hidden'); });
               const worksTitle = document.getElementById('works-title');
               if (worksTitle && newTitle) worksTitle.textContent = `${newTitle}'s Works`;
@@ -850,9 +924,9 @@ const getVariationsArray = (art: any) => {
               const variations = JSON.parse(btn.getAttribute('data-variations') || '[]');
               window.currentDetailGallery = variations; 
               
-              currentModelData.databaseId = btn.getAttribute('data-database-id');
-              currentModelData.likes = parseInt(btn.getAttribute('data-likes') || '0');
-              currentModelData.comments = JSON.parse(btn.getAttribute('data-comments') || '[]');
+              window.appState.currentModelData.databaseId = btn.getAttribute('data-database-id');
+              window.appState.currentModelData.likes = parseInt(btn.getAttribute('data-likes') || '0');
+              window.appState.currentModelData.comments = JSON.parse(btn.getAttribute('data-comments') || '[]');
 
               const gallery = document.getElementById('variation-gallery');
               if (gallery) {
@@ -865,15 +939,26 @@ const getVariationsArray = (art: any) => {
             }
 
             window.switchView(target, newImage, newTitle, newBio, newPrompt);
-            document.getElementById('right-panel')?.scrollTo({ top: 0, behavior: 'smooth' });
+            
+            if (window.innerWidth < 1024) {
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            } else {
+              document.getElementById('right-panel')?.scrollTo({ top: 0, behavior: 'smooth' });
+            }
           });
         });
 
         backBtns.forEach(btn => {
           btn.addEventListener('click', () => {
             const target = btn.getAttribute('data-target');
-            if (target === 'view-works') { window.switchView(target, currentModelData.image, currentModelData.title, currentModelData.bio, ''); } 
+            if (target === 'view-works') { window.switchView(target, window.appState.currentModelData.image, window.appState.currentModelData.title, window.appState.currentModelData.bio, ''); } 
             else { window.switchView(target); }
+            
+            if (window.innerWidth < 1024) {
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            } else {
+              document.getElementById('right-panel')?.scrollTo({ top: 0, behavior: 'smooth' });
+            }
           });
         });
 
@@ -900,34 +985,112 @@ const getVariationsArray = (art: any) => {
           }
         };
 
-        window.changeLightboxImage = (newSrc) => { const img = document.getElementById('lightbox-img'); if (!img || img.src === newSrc) return; img.classList.add('opacity-0', 'scale-95'); setTimeout(() => { const preloader = new Image(); preloader.src = newSrc; preloader.onload = () => { img.src = newSrc; img.classList.remove('scale-150'); img.classList.remove('scale-95'); img.classList.add('scale-105'); img.classList.remove('opacity-0'); setTimeout(() => { img.classList.remove('scale-105'); }, 50); }; }, 300); };
-        window.openLightbox = (src, gallery = []) => { const img = document.getElementById('lightbox-img'); const dialog = document.getElementById('lightbox'); const prevBtn = document.getElementById('lightbox-prev'); const nextBtn = document.getElementById('lightbox-next'); if (img && dialog) { img.src = src; img.classList.remove('scale-150', 'opacity-0', 'scale-95', 'scale-105'); window.currentGallery = gallery.length > 0 ? gallery : [src]; window.currentGalleryIndex = window.currentGallery.indexOf(src); if(window.currentGalleryIndex === -1) window.currentGalleryIndex = 0; if (window.currentGallery.length > 1) { prevBtn.classList.remove('hidden'); nextBtn.classList.remove('hidden'); } else { prevBtn.classList.add('hidden'); nextBtn.classList.add('hidden'); } dialog.showModal(); if(heroSlider && heroSlider.Components.Autoplay) heroSlider.Components.Autoplay.pause(); } };
+        window.changeLightboxImage = (newSrc) => { 
+          const img = document.getElementById('lightbox-img'); 
+          if (!img || img.src === newSrc) return; 
+          img.classList.add('opacity-0', 'scale-95'); 
+          setTimeout(() => { 
+            const preloader = new Image(); preloader.src = newSrc; 
+            preloader.onload = () => { 
+              img.src = newSrc; 
+              window.appState.lightboxScale = 1; 
+              img.style.transform = `scale(${window.appState.lightboxScale})`;
+              img.classList.remove('scale-95'); 
+              img.classList.remove('opacity-0'); 
+            }; 
+          }, 300); 
+        };
+
+        window.openLightbox = (src, gallery = []) => { 
+          const img = document.getElementById('lightbox-img'); 
+          const dialog = document.getElementById('lightbox'); 
+          const hint = document.getElementById('swipe-hint');
+          const prevBtn = document.getElementById('lightbox-prev'); 
+          const nextBtn = document.getElementById('lightbox-next');
+
+          if (img && dialog) { 
+            window.appState.lightboxScale = 1;
+            img.style.transform = `scale(${window.appState.lightboxScale})`;
+            img.src = src; 
+            img.classList.remove('opacity-0', 'scale-95'); 
+            window.currentGallery = gallery.length > 0 ? gallery : [src]; 
+            window.currentGalleryIndex = window.currentGallery.indexOf(src); 
+            if(window.currentGalleryIndex === -1) window.currentGalleryIndex = 0; 
+            
+            if (window.currentGallery.length > 1) { 
+              if(prevBtn) prevBtn.classList.remove('hidden'); 
+              if(nextBtn) nextBtn.classList.remove('hidden'); 
+            } else { 
+              if(prevBtn) prevBtn.classList.add('hidden'); 
+              if(nextBtn) nextBtn.classList.add('hidden'); 
+            }
+
+            dialog.showModal(); 
+            if(window.appState.heroSlider && window.appState.heroSlider.Components.Autoplay) window.appState.heroSlider.Components.Autoplay.pause(); 
+            
+            if(hint && window.currentGallery.length > 1 && !window.hasSeenSwipeHint) {
+              hint.classList.remove('opacity-0');
+              setTimeout(() => hint.classList.add('opacity-0'), 2500);
+              window.hasSeenSwipeHint = true;
+            }
+          } 
+        };
+
         window.prevLightboxImage = (e) => { if(e) e.stopPropagation(); if (!window.currentGallery || window.currentGallery.length <= 1) return; window.currentGalleryIndex = (window.currentGalleryIndex - 1 + window.currentGallery.length) % window.currentGallery.length; window.changeLightboxImage(window.currentGallery[window.currentGalleryIndex]); };
         window.nextLightboxImage = (e) => { if(e) e.stopPropagation(); if (!window.currentGallery || window.currentGallery.length <= 1) return; window.currentGalleryIndex = (window.currentGalleryIndex + 1) % window.currentGallery.length; window.changeLightboxImage(window.currentGallery[window.currentGalleryIndex]); };
-        window.closeLightbox = () => { const dialog = document.getElementById('lightbox'); if (dialog) { dialog.close(); const isTopPage = document.getElementById('view-categories').classList.contains('active'); if(heroSlider && isTopPage && heroSlider.Components.Autoplay) heroSlider.Components.Autoplay.play(); } };
+        window.closeLightbox = () => { const dialog = document.getElementById('lightbox'); if (dialog) { dialog.close(); const isTopPage = document.getElementById('view-categories').classList.contains('active'); if(window.appState.heroSlider && isTopPage && window.appState.heroSlider.Components.Autoplay) window.appState.heroSlider.Components.Autoplay.play(); } };
         
         const lightboxContainer = document.getElementById('lightbox-container'); 
         let isDragging = false; 
         let startX, startY, scrollLeft, scrollTop; 
         let touchStartX = 0; 
         let touchStartY = 0; 
+        let initialPinchDistance = 0;
+
         const startDrag = (x, y) => { isDragging = true; lightboxContainer.style.cursor = 'grabbing'; startX = x - lightboxContainer.offsetLeft; startY = y - lightboxContainer.offsetTop; scrollLeft = lightboxContainer.scrollLeft; scrollTop = lightboxContainer.scrollTop; }; 
         const stopDrag = () => { isDragging = false; lightboxContainer.style.cursor = 'grab'; }; 
         const moveDrag = (x, y) => { if(!isDragging) return; lightboxContainer.scrollLeft = scrollLeft - (x - startX); lightboxContainer.scrollTop = scrollTop - (y - startY); }; 
+        
         lightboxContainer.addEventListener('mousedown', (e) => startDrag(e.pageX, e.pageY)); 
         window.addEventListener('mouseup', stopDrag); 
         window.addEventListener('mousemove', (e) => { if (isDragging) e.preventDefault(); moveDrag(e.pageX, e.pageY); }); 
         
         lightboxContainer.addEventListener('touchstart', (e) => { 
-          touchStartX = e.touches[0].clientX; 
-          touchStartY = e.touches[0].clientY; 
-          startDrag(e.touches[0].pageX, e.touches[0].pageY); 
+          if (e.touches.length === 2) {
+            isDragging = false;
+            initialPinchDistance = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
+          } else if (e.touches.length === 1 && window.appState.lightboxScale === 1) {
+            touchStartX = e.touches[0].clientX; 
+            touchStartY = e.touches[0].clientY; 
+            startDrag(e.touches[0].pageX, e.touches[0].pageY); 
+          }
         }, {passive: true}); 
         
+        lightboxContainer.addEventListener('touchmove', (e) => {
+          if (e.touches.length === 2) {
+            e.preventDefault(); 
+            const currentDistance = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
+            let newScale = window.appState.lightboxScale * (currentDistance / initialPinchDistance);
+            newScale = Math.max(1, Math.min(newScale, 4));
+            const img = document.getElementById('lightbox-img');
+            if (img) img.style.transform = `scale(${newScale})`;
+          } else if (e.touches.length === 1 && window.appState.lightboxScale === 1) {
+            moveDrag(e.touches[0].pageX, e.touches[0].pageY);
+          }
+        }, {passive: false});
+
         lightboxContainer.addEventListener('touchend', (e) => { 
+          if (e.touches.length < 2) {
+            const img = document.getElementById('lightbox-img');
+            if (img && img.style.transform) {
+              const match = img.style.transform.match(/scale\(([^)]+)\)/);
+              if (match) window.appState.lightboxScale = parseFloat(match[1]);
+            }
+          }
+
           stopDrag(); 
-          const img = document.getElementById('lightbox-img'); 
-          if (img && !img.classList.contains('scale-150') && e.changedTouches.length > 0) { 
+
+          if (window.appState.lightboxScale === 1 && !isDragging && e.changedTouches.length === 1) { 
             const touchEndX = e.changedTouches[0].clientX; 
             const touchEndY = e.changedTouches[0].clientY; 
             const diffX = touchStartX - touchEndX; 
@@ -939,8 +1102,15 @@ const getVariationsArray = (art: any) => {
             } 
           } 
         }); 
-        window.addEventListener('touchmove', (e) => moveDrag(e.touches[0].pageX, e.touches[0].pageY), {passive: true}); 
-        lightboxContainer.addEventListener('click', (e) => { if (Math.abs(scrollLeft - lightboxContainer.scrollLeft) > 5 || Math.abs(scrollTop - lightboxContainer.scrollTop) > 5) return; const img = document.getElementById('lightbox-img'); if (!img || e.target.closest('button')) return; img.classList.toggle('scale-150'); });
+
+        lightboxContainer.addEventListener('dblclick', (e) => { 
+          if (e.target.closest('button')) return; 
+          const img = document.getElementById('lightbox-img'); 
+          if (img) {
+            window.appState.lightboxScale = window.appState.lightboxScale > 1 ? 1 : 2;
+            img.style.transform = `scale(${window.appState.lightboxScale})`;
+          }
+        });
       });
     </script>
   </body>
