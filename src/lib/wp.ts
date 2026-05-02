@@ -8,13 +8,23 @@ export async function fetchAPI(
   { variables }: { variables?: any } = {},
 ) {
   let wpUrl = import.meta.env.PUBLIC_WP_GRAPHQL_URL;
-  if (!wpUrl) return {};
+
+  // 原因1をあぶり出す：環境変数がそもそも無い場合
+  if (!wpUrl) {
+    console.error(
+      "🚨【エラー】PUBLIC_WP_GRAPHQL_URL が設定されていません。Cloudflare Pagesの管理画面で環境変数を設定してください。",
+    );
+    // ※どうしても環境変数が反映されない場合は、一時的に以下のコメントアウトを外して直書きでテストしてみてください。
+    // wpUrl = "https://api.xx-ai-girls-miu.com/graphql";
+    return {};
+  }
+
   if (!wpUrl.endsWith("/")) wpUrl += "/";
 
   const headers = {
     "Content-Type": "application/json",
-    "User-Agent":
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    // 以前の長すぎるUser-AgentはWAFに弾かれる原因になりやすいため、シンプルなものに変更します。
+    "User-Agent": "Astro-Cloudflare-Pages-Builder",
   };
 
   try {
@@ -23,20 +33,39 @@ export async function fetchAPI(
       headers,
       body: JSON.stringify({ query, variables }),
     });
+
+    // 原因2をあぶり出す：HTTPステータスエラー（403 Forbiddenや500エラーなど）
+    if (!res.ok) {
+      console.error(`🚨【Fetchエラー】HTTPステータス: ${res.status}`);
+      console.error(
+        "WP側のサーバー（WAFやセキュリティプラグイン）にアクセスがブロックされている可能性が高いです。",
+      );
+      return {};
+    }
+
     const text = await res.text();
+
     try {
       const json = JSON.parse(text);
       if (json.errors) {
-        console.error("GraphQL Error:", json.errors);
+        console.error("🚨【GraphQLエラー】:", json.errors);
         return {};
       }
       return json.data;
     } catch (e) {
-      console.error("JSON Parse Error");
+      // APIエンドポイントが間違っている、またはエラー画面のHTMLが返ってきている場合
+      console.error(
+        "🚨【JSONパースエラー】レスポンスがJSON形式ではありません。WPがエラーHTMLなどを返している可能性があります。",
+      );
+      console.log("【レスポンス内容の先頭200文字】:", text.substring(0, 200));
       return {};
     }
   } catch (e) {
-    console.error("Network Error:", e);
+    // ネットワークレベルのエラー
+    console.error(
+      "🚨【ネットワークエラー】APIエンドポイントに全く到達できませんでした:",
+      e,
+    );
     return {};
   }
 }
