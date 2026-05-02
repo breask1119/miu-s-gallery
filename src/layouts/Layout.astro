@@ -1,8 +1,7 @@
----
 // src/layouts/Layout.astro
 /**
  * サイト全体の共通レイアウトコンポーネントです。
- * ViewTransitionsによるシームレスな画面遷移をサポートします。
+ * ViewTransitionsによるシームレスな画面遷移と、PWAとしてのメタデータ・Service Workerの登録をサポートします。
  */
 import { ViewTransitions } from 'astro:transitions';
 import '../styles/app.scss';
@@ -18,12 +17,31 @@ const { title } = Astro.props;
   <head>
     <meta charset="UTF-8" />
     <meta name="description" content="Tactile Maximalism & Bento Grid Gallery" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    
+    <!-- PWA / モバイル向けのメタ設定です -->
+    <meta name="theme-color" content="#050505" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Miu's Gallery" />
+    
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/pwa-192x192.png" />
+    
     <title>{title}</title>
     <ViewTransitions />
+
+    <!-- Service Workerの登録処理です -->
+    <script>
+      import { registerSW } from 'virtual:pwa-register';
+      
+      // ブラウザがService Workerをサポートしている場合のみ実行します
+      if ('serviceWorker' in navigator) {
+        registerSW({ immediate: true });
+      }
+    </script>
   </head>
-  <body class="bg-brand-dark text-gray-200 antialiased selection:bg-brand-neon selection:text-white">
+  <body class="bg-[#050505] text-gray-200 antialiased selection:bg-[#F43F5E] selection:text-white">
     <slot />
   </body>
 </html>
