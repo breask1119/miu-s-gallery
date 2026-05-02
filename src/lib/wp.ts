@@ -8,22 +8,11 @@ export async function fetchAPI(
   { variables }: { variables?: any } = {},
 ) {
   let wpUrl = import.meta.env.PUBLIC_WP_GRAPHQL_URL;
-
-  // 原因1をあぶり出す：環境変数がそもそも無い場合
-  if (!wpUrl) {
-    console.error(
-      "🚨【エラー】PUBLIC_WP_GRAPHQL_URL が設定されていません。Cloudflare Pagesの管理画面で環境変数を設定してください。",
-    );
-    // ※どうしても環境変数が反映されない場合は、一時的に以下のコメントアウトを外して直書きでテストしてみてください。
-    // wpUrl = "https://api.xx-ai-girls-miu.com/graphql";
-    return {};
-  }
-
+  if (!wpUrl) return {};
   if (!wpUrl.endsWith("/")) wpUrl += "/";
 
   const headers = {
     "Content-Type": "application/json",
-    // 以前の長すぎるUser-AgentはWAFに弾かれる原因になりやすいため、シンプルなものに変更します。
     "User-Agent": "Astro-Cloudflare-Pages-Builder",
   };
 
@@ -34,12 +23,8 @@ export async function fetchAPI(
       body: JSON.stringify({ query, variables }),
     });
 
-    // 原因2をあぶり出す：HTTPステータスエラー（403 Forbiddenや500エラーなど）
     if (!res.ok) {
       console.error(`🚨【Fetchエラー】HTTPステータス: ${res.status}`);
-      console.error(
-        "WP側のサーバー（WAFやセキュリティプラグイン）にアクセスがブロックされている可能性が高いです。",
-      );
       return {};
     }
 
@@ -49,23 +34,17 @@ export async function fetchAPI(
       const json = JSON.parse(text);
       if (json.errors) {
         console.error("🚨【GraphQLエラー】:", json.errors);
-        return {};
+        // ▼ ここを強化！エラーがあっても、他の正常なデータ（json.data）はレスポンスとして返すように変更。
+        // これにより、一部の画像が壊れていてもサイト全体がクラッシュするのを防ぎます。
+        return json.data || {};
       }
       return json.data;
     } catch (e) {
-      // APIエンドポイントが間違っている、またはエラー画面のHTMLが返ってきている場合
-      console.error(
-        "🚨【JSONパースエラー】レスポンスがJSON形式ではありません。WPがエラーHTMLなどを返している可能性があります。",
-      );
-      console.log("【レスポンス内容の先頭200文字】:", text.substring(0, 200));
+      console.error("🚨【JSONパースエラー】");
       return {};
     }
   } catch (e) {
-    // ネットワークレベルのエラー
-    console.error(
-      "🚨【ネットワークエラー】APIエンドポイントに全く到達できませんでした:",
-      e,
-    );
+    console.error("🚨【ネットワークエラー】", e);
     return {};
   }
 }
@@ -80,21 +59,21 @@ export async function getGalleryData() {
         title
         description
       }
-      # ▼ スライダーの順番は管理画面の順（MENU_ORDER）
-      sliders(first: 10, where: { orderby: { field: MENU_ORDER, order: ASC } }) {
+      sliders(first: 50, where: { orderby: { field: MENU_ORDER, order: ASC } }) {
         nodes {
           title
           featuredImage { node { sourceUrl } }
+          memberColor 
         }
       }
-      # ▼ モデルは元のプラグイン仕様（TERM_ORDER）に戻す
-      models(first: 20, where: { orderby: TERM_ORDER }) {
+      models(first: 50, where: { orderby: TERM_ORDER }) {
         nodes {
           id
           name
           slug
           modelAvatar { node { sourceUrl } }
           modelBio
+          memberColor 
           artworks(first: 10, where: { orderby: { field: DATE, order: DESC } }) {
             nodes {
               id

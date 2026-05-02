@@ -12,16 +12,63 @@ const allArtworks = models.flatMap((model: any) =>
 );
 
 const placeholderImg = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1200&auto=format&fit=crop";
+const wpGraphqlUrl = import.meta.env.PUBLIC_WP_GRAPHQL_URL || '';
 
-/**
- * URLがhttpで返ってきた場合、強制的にhttpsに変換するヘルパー関数です。
- * これによりブラウザのMixed Content（混合コンテンツ）エラーを防ぎます。
- */
-const secureUrl = (url: string) => url ? url.replace(/^http:\/\//i, 'https://') : '';
+const secureUrl = (url: string) => {
+  if (!url) return '';
+  let httpsUrl = url.replace(/^http:\/\//i, 'https://');
+  if (wpGraphqlUrl && !httpsUrl.includes('unsplash.com')) {
+    try {
+      const wpOrigin = new URL(wpGraphqlUrl).origin;
+      const urlObj = new URL(httpsUrl);
+      if (urlObj.origin !== wpOrigin) {
+        urlObj.protocol = new URL(wpOrigin).protocol;
+        urlObj.hostname = new URL(wpOrigin).hostname;
+        urlObj.port = new URL(wpOrigin).port;
+        return urlObj.toString();
+      }
+    } catch (e) {}
+  }
+  return httpsUrl;
+};
+
+const hexToRgba = (hex: string, alpha: number = 0.5) => {
+  const validHex = hex && hex.trim() !== '' ? hex : '#F43F5E';
+  const r = parseInt(validHex.slice(1, 3), 16);
+  const g = parseInt(validHex.slice(3, 5), 16);
+  const b = parseInt(validHex.slice(5, 7), 16);
+  if (isNaN(r) || isNaN(g) || isNaN(b)) {
+     return `rgba(244, 63, 94, ${alpha})`;
+  }
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
+
+const getValidColor = (color: string) => (color && color.trim() !== '') ? color : '#F43F5E';
+
+const getTextColorClasses = (hex: string) => {
+  const validHex = hex && hex.trim() !== '' ? hex : '#F43F5E';
+  const r = parseInt(validHex.slice(1, 3), 16);
+  const g = parseInt(validHex.slice(3, 5), 16);
+  const b = parseInt(validHex.slice(5, 7), 16);
+  
+  if (isNaN(r) || isNaN(g) || isNaN(b)) {
+     return { main: 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]', sub: 'text-white/80 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]' };
+  }
+  
+  const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+  
+  if (yiq >= 128) {
+    return { main: 'text-[#0A0A0C] font-normal', sub: 'text-[#0A0A0C]/80 font-normal' };
+  } else {
+    return { main: 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]', sub: 'text-white/80 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]' };
+  }
+};
+
+const globalBaseColor = models.length > 0 ? getValidColor(models[0].memberColor) : '#F43F5E';
 
 const displaySliders = sliders && sliders.length > 0 
   ? sliders 
-  : [{ featuredImage: { node: { sourceUrl: placeholderImg } } }];
+  : [{ featuredImage: { node: { sourceUrl: placeholderImg } }, title: 'Welcome' }];
 
 const getVariationsArray = (art: any) => {
   const images = art.orderedImages;
@@ -30,8 +77,6 @@ const getVariationsArray = (art: any) => {
   }
   return [secureUrl(art.featuredImage?.node?.sourceUrl) || placeholderImg];
 };
-
-const wpGraphqlUrl = import.meta.env.PUBLIC_WP_GRAPHQL_URL;
 ---
 
 <html lang="ja" class="dark">
@@ -54,6 +99,9 @@ const wpGraphqlUrl = import.meta.env.PUBLIC_WP_GRAPHQL_URL;
     
     <div id="custom-cursor" class="hidden lg:flex"><span id="cursor-text"></span></div>
 
+    <!-- ▼ JSから動的に色を変えられるように、初期の背景色と文字色のクラスを外しました -->
+    <div id="global-sidebar-tooltip" class="fixed z-[150] text-xs px-3 py-1.5 rounded-lg opacity-0 transition-opacity duration-200 pointer-events-none whitespace-nowrap shadow-xl border border-white/20 font-light tracking-wide -translate-y-1/2"></div>
+
     <main class="flex flex-col lg:flex-row h-[100dvh] w-full bg-transparent overflow-y-auto lg:overflow-hidden relative z-10">
       
       <section 
@@ -66,15 +114,21 @@ const wpGraphqlUrl = import.meta.env.PUBLIC_WP_GRAPHQL_URL;
               <ul class="splide__list w-full h-full">
                 {displaySliders.map((slide: any) => {
                   const src = secureUrl(slide.featuredImage?.node?.sourceUrl) || placeholderImg;
+                  const themeColor = slide.memberColor ? getValidColor(slide.memberColor) : globalBaseColor;
+                  const bgColor = hexToRgba(themeColor, 0.6);
+                  const borderColor = hexToRgba(themeColor, 0.3);
+
                   return (
                     <li class="splide__slide w-full h-full relative">
-                      <img src={src} class="js-main-bg absolute inset-0 w-full h-full object-cover opacity-70 blur-[20px] pointer-events-none" />
-                      <img src={src} fetchpriority="high" class="js-main-img absolute inset-0 w-full h-full object-contain z-10" />
+                      <img src={src} class="js-main-bg absolute inset-0 w-full h-full object-cover opacity-70 blur-[20px] pointer-events-none" referrerpolicy="no-referrer" />
+                      <img src={src} fetchpriority="high" class="js-main-img absolute inset-0 w-full h-full object-contain z-10" referrerpolicy="no-referrer" />
                       
-                      <!-- ▼ タイトルはフッターと被らない位置（lg:bottom-[120px]）に配置 -->
                       {slide.title && (
                         <div class="js-slide-title absolute bottom-8 right-6 lg:bottom-[120px] lg:right-12 z-20 pointer-events-none text-right">
-                          <h2 class="inline-block text-white text-lg lg:text-2xl font-light tracking-widest bg-[#0A0A0C]/50 backdrop-blur-xl px-6 lg:px-8 py-3 lg:py-4 rounded-2xl border border-white/10 shadow-[0_8px_32px_0_rgba(0,0,0,0.3)]">
+                          <h2 
+                            class="inline-block text-white text-lg lg:text-2xl font-light tracking-widest backdrop-blur-xl px-6 lg:px-8 py-3 lg:py-4 rounded-2xl shadow-[0_8px_32px_0_rgba(0,0,0,0.3)] drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]"
+                            style={`background-color: ${bgColor}; border: 1px solid ${borderColor};`}
+                          >
                             {slide.title}
                           </h2>
                         </div>
@@ -88,8 +142,8 @@ const wpGraphqlUrl = import.meta.env.PUBLIC_WP_GRAPHQL_URL;
         </div>
 
         <div id="hero-static-wrapper" class="w-full h-full absolute inset-0 transition-opacity duration-700 opacity-0 hidden z-0">
-          <img id="hero-static-bg" src="" class="absolute inset-0 w-full h-full object-cover opacity-70 blur-[20px] transition-opacity duration-500 pointer-events-none" />
-          <img id="hero-static-img" src="" class="absolute inset-0 w-full h-full object-contain z-10 transition-all duration-700 ease-out" />
+          <img id="hero-static-bg" src="" class="absolute inset-0 w-full h-full object-cover opacity-70 blur-[20px] transition-opacity duration-500 pointer-events-none" referrerpolicy="no-referrer" />
+          <img id="hero-static-img" src="" class="absolute inset-0 w-full h-full object-contain z-10 transition-all duration-700 ease-out" referrerpolicy="no-referrer" />
         </div>
         
         <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-100 pointer-events-none z-10 h-1/2 mt-auto"></div>
@@ -112,23 +166,29 @@ const wpGraphqlUrl = import.meta.env.PUBLIC_WP_GRAPHQL_URL;
                 const latestArtworkImg = secureUrl(model.artworks?.nodes?.[0]?.featuredImage?.node?.sourceUrl);
                 const avatarSrc = secureUrl(model.modelAvatar?.node?.sourceUrl) || placeholderImg;
                 const displayImage = latestArtworkImg || avatarSrc;
+                const modelColor = getValidColor(model.memberColor);
+                
+                const cardTextBgColor = hexToRgba(modelColor, 0.35);
+                const cardTextBorderColor = hexToRgba(modelColor, 0.4);
                 
                 return (
                   <button 
-                    class="js-nav-trigger group c-glass-card rounded-2xl overflow-hidden text-left outline-none" 
+                    class="js-nav-trigger group c-glass-card rounded-2xl overflow-hidden text-left outline-none flex flex-col h-full" 
                     data-target="view-works" 
                     data-model-id={model.id}
                     data-title={model.name} 
                     data-bio={model.modelBio || ''}
                     data-image={displayImage}
+                    data-color={modelColor}
                   >
-                    <div class="aspect-square overflow-hidden relative">
-                      <!-- ▼ 縦横比を崩さず顔周りを出すために object-cover と object-top を適用 -->
-                      <img src={avatarSrc} loading="lazy" decoding="async" alt={model.name} class="w-full h-full object-cover object-top group-hover:scale-110 transition-transform duration-700 ease-out" />
+                    <div class="aspect-square overflow-hidden relative flex-shrink-0">
+                      <img src={avatarSrc} loading="lazy" decoding="async" alt={model.name} class="w-full h-full object-cover object-top group-hover:scale-110 transition-transform duration-700 ease-out" referrerpolicy="no-referrer" />
+                      <div class="absolute inset-0 opacity-0 group-hover:opacity-40 transition-opacity duration-700 pointer-events-none mix-blend-overlay" style={`background: linear-gradient(to top, ${modelColor}, transparent);`}></div>
                     </div>
-                    <div class="p-3 lg:p-4">
-                      <h3 class="font-light text-white text-base tracking-wide">{model.name}</h3>
-                      <p class="text-xs text-gray-500 mt-1 font-light">{model.artworks?.nodes?.length || 0} Works</p>
+                    
+                    <div class="p-3 lg:p-4 flex-grow backdrop-blur-md transition-colors duration-300" style={`background-color: ${cardTextBgColor}; border-top: 1px solid ${cardTextBorderColor};`}>
+                      <h3 class="font-medium text-white text-base tracking-wide drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">{model.name}</h3>
+                      <p class="text-xs text-white/80 mt-1 font-light drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{model.artworks?.nodes?.length || 0} Works</p>
                     </div>
                   </button>
                 )
@@ -145,10 +205,14 @@ const wpGraphqlUrl = import.meta.env.PUBLIC_WP_GRAPHQL_URL;
               {allArtworks.map((art: any) => {
                 const src = secureUrl(art.featuredImage?.node?.sourceUrl) || placeholderImg;
                 const variations = getVariationsArray(art);
+                const modelColor = getValidColor(art.model?.memberColor);
+                
+                const workTextBgColor = hexToRgba(modelColor, 0.25);
+                const workTextBorderColor = hexToRgba(modelColor, 0.3);
 
                 return (
                   <button 
-                    class="js-nav-trigger group block w-full text-left outline-none rounded-2xl js-work-item hidden" 
+                    class="js-nav-trigger group block w-full text-left outline-none rounded-2xl js-work-item hidden flex flex-col h-full" 
                     data-target="view-detail"
                     data-model-id={art.model.id}
                     data-database-id={art.databaseId}
@@ -159,12 +223,12 @@ const wpGraphqlUrl = import.meta.env.PUBLIC_WP_GRAPHQL_URL;
                     data-likes={art.likeCount || 0}
                     data-comments={JSON.stringify(art.guestComments || [])}
                   >
-                    <div class="c-glass-card rounded-2xl overflow-hidden">
-                      <div class="aspect-[4/5] overflow-hidden relative">
-                        <img src={src} loading="lazy" decoding="async" alt={art.title} class="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-700 ease-out" />
+                    <div class="c-glass-card rounded-2xl overflow-hidden flex flex-col h-full">
+                      <div class="aspect-[4/5] overflow-hidden relative flex-shrink-0">
+                        <img src={src} loading="lazy" decoding="async" alt={art.title} class="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-700 ease-out" referrerpolicy="no-referrer" />
                       </div>
-                      <div class="p-4">
-                        <h3 class="font-light text-white text-sm lg:text-base leading-tight tracking-wide">{art.title}</h3>
+                      <div class="p-4 flex-grow backdrop-blur-md transition-colors duration-300" style={`background-color: ${workTextBgColor}; border-top: 1px solid ${workTextBorderColor};`}>
+                        <h3 class="font-medium text-white text-sm lg:text-base leading-tight tracking-wide drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">{art.title}</h3>
                       </div>
                     </div>
                   </button>
@@ -202,25 +266,32 @@ const wpGraphqlUrl = import.meta.env.PUBLIC_WP_GRAPHQL_URL;
     
         </div>
 
-        <aside id="pc-sidebar" class="hidden max-lg:hidden absolute right-0 top-0 w-20 h-[calc(100dvh-90px)] border-l border-white/10 bg-[#151518]/90 backdrop-blur-2xl shadow-[-10px_0_30px_rgba(0,0,0,0.5)] items-center py-8 gap-6 z-10 transition-opacity duration-300">
-          {models.slice(0, 5).map((model: any) => {
+        <aside id="pc-sidebar" class="hidden max-lg:hidden absolute right-0 top-0 w-20 h-[calc(100dvh-90px)] border-l border-white/10 bg-[#151518]/90 backdrop-blur-2xl shadow-[-10px_0_30px_rgba(0,0,0,0.5)] items-center py-8 gap-6 z-10 transition-opacity duration-300 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+          {models.map((model: any) => {
             const latestArtworkImg = secureUrl(model.artworks?.nodes?.[0]?.featuredImage?.node?.sourceUrl);
             const avatarSrc = secureUrl(model.modelAvatar?.node?.sourceUrl) || placeholderImg;
             const displayImage = latestArtworkImg || avatarSrc;
+            const modelColor = getValidColor(model.memberColor);
+            
+            // ▼ 明るさに応じてツールチップの文字色を判定
+            const textColors = getTextColorClasses(modelColor);
+            const isLightColor = textColors.main.includes('text-[#0A0A0C]');
+            const tooltipTextColor = isLightColor ? '#0A0A0C' : '#FFFFFF';
 
             return (
               <div 
-                class="relative group cursor-pointer js-nav-trigger" 
+                class="relative group cursor-pointer js-nav-trigger shrink-0" 
                 data-target="view-works" 
                 data-model-id={model.id} 
                 data-title={model.name}
                 data-bio={model.modelBio || ''}
                 data-image={displayImage}
+                data-color={modelColor}
+                data-text-color={tooltipTextColor}
+                onmouseenter="window.showSidebarTooltip(this)"
+                onmouseleave="window.hideSidebarTooltip()"
               >
-                <img src={avatarSrc} loading="lazy" decoding="async" class="w-12 h-12 rounded-full object-cover object-top border-2 border-transparent group-hover:border-[#F43F5E] transition-colors shadow-lg" />
-                <div class="absolute right-full top-1/2 -translate-y-1/2 mr-4 bg-[#151518] text-white text-xs px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-xl border border-white/10 font-light tracking-wide">
-                  {model.name}
-                </div>
+                <img src={avatarSrc} loading="lazy" decoding="async" class="w-12 h-12 rounded-full object-cover object-top border-2 border-transparent transition-colors shadow-lg" style={`--hover-color: ${modelColor};`} onmouseover="this.style.borderColor = this.style.getPropertyValue('--hover-color')" onmouseout="this.style.borderColor = 'transparent'" referrerpolicy="no-referrer" />
               </div>
             )
           })}
@@ -250,6 +321,7 @@ const wpGraphqlUrl = import.meta.env.PUBLIC_WP_GRAPHQL_URL;
             const latestArtworkImg = secureUrl(model.artworks?.nodes?.[0]?.featuredImage?.node?.sourceUrl);
             const avatarSrc = secureUrl(model.modelAvatar?.node?.sourceUrl) || placeholderImg;
             const displayImage = latestArtworkImg || avatarSrc;
+            const modelColor = getValidColor(model.memberColor);
 
             return (
               <button 
@@ -259,8 +331,9 @@ const wpGraphqlUrl = import.meta.env.PUBLIC_WP_GRAPHQL_URL;
                 data-title={model.name}
                 data-bio={model.modelBio || ''}
                 data-image={displayImage}
+                data-color={modelColor}
               >
-                <img src={avatarSrc} loading="lazy" decoding="async" alt={model.name} class="w-12 h-12 rounded-full object-cover object-top border-2 border-transparent active:border-[#F43F5E] transition-colors shadow-md" />
+                <img src={avatarSrc} loading="lazy" decoding="async" alt={model.name} class="w-12 h-12 rounded-full object-cover object-top border-2 border-transparent transition-colors shadow-md" style={`--active-color: ${modelColor};`} onmousedown="this.style.borderColor = this.style.getPropertyValue('--active-color')" onmouseup="this.style.borderColor = 'transparent'" referrerpolicy="no-referrer" />
               </button>
             )
           })}
@@ -319,7 +392,7 @@ const wpGraphqlUrl = import.meta.env.PUBLIC_WP_GRAPHQL_URL;
 
       <div id="lightbox-container" class="relative w-full h-full overflow-auto flex cursor-grab active:cursor-grabbing select-none z-[100] touch-none">
         <div class="m-auto w-full h-full flex items-center justify-center p-4 lg:p-12 transition-transform duration-300 pointer-events-none" id="lightbox-scale-wrapper">
-          <img id="lightbox-img" src="" class="max-h-[90vh] max-w-full w-auto h-auto shadow-2xl transition-all duration-500 ease-out pointer-events-auto" />
+          <img id="lightbox-img" src="" class="max-h-[90vh] max-w-full w-auto h-auto shadow-2xl transition-all duration-500 ease-out pointer-events-auto" referrerpolicy="no-referrer" />
         </div>
       </div>
     </dialog>
@@ -330,8 +403,36 @@ const wpGraphqlUrl = import.meta.env.PUBLIC_WP_GRAPHQL_URL;
       let clickTimer = null;
       let lastTapTime = 0;
       let heroSlider = null;
-      let currentModelData = { databaseId: 0, title: '', bio: '', prompt: '', image: '', likes: 0, comments: [] };
+      let currentModelData = { databaseId: 0, title: '', bio: '', prompt: '', image: '', likes: 0, comments: [], color: '#F43F5E' };
       let activeReplyId = 0; 
+
+      /**
+       * サイドバーのアイコンホバー時に表示されるツールチップの制御関数です。
+       * メンバーカラーを取得して背景色と文字色を動的に変更します。
+       */
+      window.showSidebarTooltip = (el) => {
+        const tooltip = document.getElementById('global-sidebar-tooltip');
+        if(!tooltip) return;
+        const rect = el.getBoundingClientRect();
+        const color = el.getAttribute('data-color') || '#F43F5E';
+        const textColor = el.getAttribute('data-text-color') || '#FFFFFF';
+        
+        tooltip.textContent = el.getAttribute('data-title');
+        tooltip.style.backgroundColor = color;
+        tooltip.style.color = textColor;
+        // ▼ 白文字の時はドロップシャドウを薄くかけて可読性を担保
+        tooltip.style.textShadow = textColor === '#FFFFFF' ? '0 1px 2px rgba(0,0,0,0.8)' : 'none';
+        
+        tooltip.style.top = (rect.top + rect.height / 2) + 'px';
+        tooltip.style.right = (window.innerWidth - rect.left + 16) + 'px';
+        tooltip.classList.remove('opacity-0');
+      };
+
+      window.hideSidebarTooltip = () => {
+        const tooltip = document.getElementById('global-sidebar-tooltip');
+        if(!tooltip) return;
+        tooltip.classList.add('opacity-0');
+      };
 
       document.addEventListener('astro:page-load', () => {
         if (window.Splide) {
@@ -350,6 +451,10 @@ const wpGraphqlUrl = import.meta.env.PUBLIC_WP_GRAPHQL_URL;
         const pcSidebar = document.getElementById('pc-sidebar');
         const spModelNav = document.getElementById('sp-model-nav');
         const defaultSiteTitle = heroTitle ? heroTitle.innerHTML : '';
+
+        if (pcSidebar) {
+          pcSidebar.addEventListener('scroll', window.hideSidebarTooltip, { passive: true });
+        }
 
         document.addEventListener('keydown', (e) => {
           const lightbox = document.getElementById('lightbox');
@@ -444,8 +549,8 @@ const wpGraphqlUrl = import.meta.env.PUBLIC_WP_GRAPHQL_URL;
           ['btn-like-icon', 'btn-like-icon-sp'].forEach(id => {
             const icon = document.getElementById(id);
             if(icon) {
-              if(isLiked) icon.classList.add('text-[#F43F5E]', 'fill-current');
-              else icon.classList.remove('text-[#F43F5E]', 'fill-current');
+              if(isLiked) icon.classList.add(`text-[${currentModelData.color}]`, 'fill-current');
+              else icon.classList.remove(`text-[${currentModelData.color}]`, 'fill-current');
             }
           });
           window.renderComments();
@@ -495,13 +600,13 @@ const wpGraphqlUrl = import.meta.env.PUBLIC_WP_GRAPHQL_URL;
         };
 
         const buildCommentHtml = (c, isReply = false) => `
-          <div class="bg-white/5 border border-white/5 rounded-2xl p-4 ${isReply ? 'ml-6 mt-2 border-l-2 border-l-[#F43F5E]/50' : ''}">
+          <div class="bg-white/5 border border-white/5 rounded-2xl p-4 ${isReply ? `ml-6 mt-2 border-l-2 border-l-[${currentModelData.color}]/50` : ''}">
             <div class="flex items-baseline justify-between mb-2">
               <span class="text-white font-medium">${c.author || '名無しさん'}</span>
               <span class="text-gray-500 text-xs">${c.date ? new Date(c.date).toLocaleDateString() : 'Just now'}</span>
             </div>
             <p class="text-gray-300 font-light leading-relaxed mb-3">${c.content}</p>
-            ${!isReply ? `<button onclick="window.setReplyTo(${c.id}, '${c.author || '名無しさん'}')" class="text-xs text-gray-500 hover:text-[#F43F5E] transition-colors outline-none flex items-center gap-1"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path></svg> 返信する</button>` : ''}
+            ${!isReply ? `<button onclick="window.setReplyTo(${c.id}, '${c.author || '名無しさん'}')" class="text-xs text-gray-500 hover:text-[${currentModelData.color}] transition-colors outline-none flex items-center gap-1"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path></svg> 返信する</button>` : ''}
           </div>
         `;
 
@@ -655,7 +760,7 @@ const wpGraphqlUrl = import.meta.env.PUBLIC_WP_GRAPHQL_URL;
 
           if (!fromButton) {
             const heart = document.createElement('div');
-            heart.innerHTML = `<svg viewBox="0 0 24 24" class="w-32 h-32 text-[#F43F5E] fill-current drop-shadow-[0_0_30px_rgba(244,63,94,0.8)]"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>`;
+            heart.innerHTML = `<svg viewBox="0 0 24 24" class="w-32 h-32 fill-current" style="color: ${currentModelData.color}; filter: drop-shadow(0 0 30px ${currentModelData.color});"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>`;
             heart.className = 'fixed pointer-events-none z-[9999] transform -translate-x-1/2 -translate-y-1/2 animate-heart-burst';
             heart.style.left = (e.clientX || window.innerWidth/2) + 'px';
             heart.style.top = (e.clientY || window.innerHeight/2) + 'px';
@@ -732,9 +837,10 @@ const wpGraphqlUrl = import.meta.env.PUBLIC_WP_GRAPHQL_URL;
             const newTitle = btn.getAttribute('data-title');
             const newBio = btn.getAttribute('data-bio');
             const newPrompt = btn.getAttribute('data-prompt');
+            const newColor = btn.getAttribute('data-color') || '#F43F5E'; 
 
             if (target === 'view-works' && modelId) {
-              currentModelData = { ...currentModelData, title: newTitle, bio: newBio, prompt: '', image: newImage };
+              currentModelData = { ...currentModelData, title: newTitle, bio: newBio, prompt: '', image: newImage, color: newColor };
               document.querySelectorAll('.js-work-item').forEach(item => { item.getAttribute('data-model-id') === modelId ? item.classList.remove('hidden') : item.classList.add('hidden'); });
               const worksTitle = document.getElementById('works-title');
               if (worksTitle && newTitle) worksTitle.textContent = `${newTitle}'s Works`;
@@ -751,8 +857,8 @@ const wpGraphqlUrl = import.meta.env.PUBLIC_WP_GRAPHQL_URL;
               const gallery = document.getElementById('variation-gallery');
               if (gallery) {
                 gallery.innerHTML = variations.map(url => `
-                  <button class="shrink-0 w-24 sm:w-32 lg:w-full aspect-square overflow-hidden rounded-xl outline-none group border border-white/5 hover:border-[#F43F5E]/50 transition-colors snap-center" onclick="window.updateHeroImage('${url}')">
-                    <img src="${url}" class="js-variation-img w-full h-full object-cover group-hover:scale-110 transition-all duration-500 ease-out" />
+                  <button class="shrink-0 w-24 sm:w-32 lg:w-full aspect-square overflow-hidden rounded-xl outline-none group border border-white/5 transition-colors snap-center" style="--hover-border: ${newColor}80;" onmouseover="this.style.borderColor = this.style.getPropertyValue('--hover-border')" onmouseout="this.style.borderColor = 'rgba(255,255,255,0.05)'" onclick="window.updateHeroImage('${url}')">
+                    <img src="${url}" class="js-variation-img w-full h-full object-cover group-hover:scale-110 transition-all duration-500 ease-out" referrerpolicy="no-referrer" />
                   </button>
                 `).join('');
               }
