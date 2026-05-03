@@ -76,23 +76,94 @@ const getVariationsArray = (art: any) => {
   }
   return [secureUrl(art.featuredImage?.node?.sourceUrl) || placeholderImg];
 };
+
+// WordPressから取得した文字列に含まれるHTMLエンティティ（&#039; など）を元の文字に変換する関数です
+const decodeHtmlEntities = (str: string) => {
+  if (!str) return '';
+  return str
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'")
+    .replace(/&#8217;/g, '’')
+    .replace(/&#8216;/g, '‘');
+};
+
+// SEOやメタデータ用の変数を定義します（デコード処理を挟んでいます）
+const siteTitle = decodeHtmlEntities(siteInfo.title) || "Miu's Gallery | AI Girls Gallery";
+const siteDescription = decodeHtmlEntities(siteInfo.description) || "オリジナルAIキャラクター「美羽」たちの美麗な写真をお届けするギャラリーサイトです。";
+const siteUrl = Astro.site ? Astro.site.toString() : "https://xx-ai-girls-miu.com/";
+const ogImageUrl = secureUrl(displaySliders[0]?.featuredImage?.node?.sourceUrl) || placeholderImg;
+
+// 検索エンジン向けの構造化データ（JSON-LD）を構築します
+const schemaLD = {
+  "@context": "https://schema.org",
+  "@type": "ImageGallery",
+  "name": siteTitle,
+  "description": siteDescription,
+  "url": siteUrl,
+  "image": ogImageUrl,
+  "author": {
+    "@type": "Person",
+    "name": "Miu"
+  }
+};
 ---
 
 <html lang="ja" class="dark">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Miu's Gallery | AI Girls Gallery</title>
+    
+    <!-- SEOメタデータとOGPの設定を行います -->
+    <title>{siteTitle}</title>
+    <meta name="description" content={siteDescription} />
+    <link rel="canonical" href={siteUrl} />
+    
+    <meta property="og:site_name" content={siteTitle} />
+    <meta property="og:title" content={siteTitle} />
+    <meta property="og:description" content={siteDescription} />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={siteUrl} />
+    <meta property="og:image" content={ogImageUrl} />
+    
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={siteTitle} />
+    <meta name="twitter:description" content={siteDescription} />
+    <meta name="twitter:image" content={ogImageUrl} />
+
+    <!-- ファビコンとApple Touch Iconの設定をPNG形式で追加します -->
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="theme-color" content="#050505" />
-    <link rel="apple-touch-icon" href="/icon-192x192.png" />
+    
     <ClientRouter />
     
+    <!-- Service Workerの登録とキャッシュ自動更新処理を追加します -->
+    <script>
+      import { registerSW } from 'virtual:pwa-register';
+      
+      if ('serviceWorker' in navigator) {
+        const updateSW = registerSW({
+          immediate: true,
+          onNeedRefresh() {
+            // 新しいビルドがデプロイされた際、古いキャッシュを破棄して強制リフレッシュします
+            updateSW(true);
+          }
+        });
+      }
+    </script>
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500&family=Noto+Sans+JP:wght@300;400;500&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/@splidejs/splide@4.1.4/dist/css/splide.min.css" rel="stylesheet">
     
+    <!-- 構造化データを挿入します -->
+    <script type="application/ld+json" set:html={JSON.stringify(schemaLD)} />
+
     <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
     <script is:inline>
       window.OneSignalDeferred = window.OneSignalDeferred || [];
@@ -139,6 +210,7 @@ const getVariationsArray = (art: any) => {
   </head>
   <body class="bg-[#050505] text-gray-200 antialiased selection:bg-[#F43F5E] selection:text-white max-lg:overflow-x-hidden max-lg:min-h-screen lg:overflow-hidden u-bg-noise font-light flex flex-col lg:h-[100dvh]">
     
+    <!-- PWA Install Prompt -->
     <div id="pwa-install-prompt" class="fixed bottom-4 left-1/2 -translate-x-1/2 z-[300] w-[92%] max-w-sm bg-[#151518]/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-[0_10px_40px_rgba(0,0,0,0.8)] p-4 lg:p-5 flex flex-col gap-3 translate-y-[150%] transition-transform duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]">
       <div class="flex items-start justify-between gap-3">
         <div class="flex items-center gap-3">
@@ -150,7 +222,7 @@ const getVariationsArray = (art: any) => {
             <p class="text-gray-400 text-xs mt-0.5 leading-snug">ホーム画面に追加してフルスクリーンでお楽しみください。</p>
           </div>
         </div>
-        <button id="pwa-close-btn" class="text-gray-500 hover:text-white transition-colors p-1 shrink-0 -mt-1 -mr-1">
+        <button id="pwa-close-btn" aria-label="閉じる" class="text-gray-500 hover:text-white transition-colors p-1 shrink-0 -mt-1 -mr-1">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
         </button>
       </div>
@@ -167,15 +239,15 @@ const getVariationsArray = (art: any) => {
       </button>
     </div>
 
-    <div id="custom-cursor" class="hidden lg:flex"><span id="cursor-text"></span></div>
+    <div id="custom-cursor" class="hidden lg:flex" aria-hidden="true"><span id="cursor-text"></span></div>
 
-    <div id="global-sidebar-tooltip" class="fixed z-[150] text-xs px-3 py-1.5 rounded-lg opacity-0 transition-opacity duration-200 pointer-events-none whitespace-nowrap shadow-xl border border-white/20 font-light tracking-wide -translate-y-1/2"></div>
+    <div id="global-sidebar-tooltip" class="fixed z-[150] text-xs px-3 py-1.5 rounded-lg opacity-0 transition-opacity duration-200 pointer-events-none whitespace-nowrap shadow-xl border border-white/20 font-light tracking-wide -translate-y-1/2" aria-hidden="true"></div>
 
-    <aside id="global-sns-nav" class="fixed right-4 bottom-28 z-[80] flex flex-col gap-3 lg:hidden transition-transform duration-500 ease-out">
-      <a href="https://www.instagram.com/xx.ai.girls.miu0402/" target="_blank" rel="noopener noreferrer" class="w-10 h-10 rounded-full bg-[#151518]/80 backdrop-blur-xl border border-white/10 flex items-center justify-center text-white hover:text-[#F43F5E] hover:border-[#F43F5E]/50 transition-all shadow-[0_8px_32px_0_rgba(0,0,0,0.5)]">
+    <aside id="global-sns-nav" class="fixed right-4 bottom-28 z-[80] flex flex-col gap-3 lg:hidden transition-transform duration-500 ease-out" aria-label="ソーシャルリンク">
+      <a href="https://www.instagram.com/xx.ai.girls.miu0402/" target="_blank" rel="noopener noreferrer" aria-label="Instagram" class="w-10 h-10 rounded-full bg-[#151518]/80 backdrop-blur-xl border border-white/10 flex items-center justify-center text-white hover:text-[#F43F5E] hover:border-[#F43F5E]/50 transition-all shadow-[0_8px_32px_0_rgba(0,0,0,0.5)]">
         <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
       </a>
-      <a href="https://www.patreon.com/cw/u73055670?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_creator&utm_content=copyLink" target="_blank" rel="noopener noreferrer" class="w-10 h-10 rounded-full bg-[#151518]/80 backdrop-blur-xl border border-white/10 flex items-center justify-center text-white hover:text-[#F43F5E] hover:border-[#F43F5E]/50 transition-all shadow-[0_8px_32px_0_rgba(0,0,0,0.5)]">
+      <a href="https://www.patreon.com/cw/u73055670?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_creator&utm_content=copyLink" target="_blank" rel="noopener noreferrer" aria-label="Patreon" class="w-10 h-10 rounded-full bg-[#151518]/80 backdrop-blur-xl border border-white/10 flex items-center justify-center text-white hover:text-[#F43F5E] hover:border-[#F43F5E]/50 transition-all shadow-[0_8px_32px_0_rgba(0,0,0,0.5)]">
         <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 1080 1080"><path d="M1033.05,324.45c-0.19-137.9-107.59-250.92-233.6-291.7c-156.48-50.64-362.86-43.3-512.28,27.2 C106.07,145.41,49.18,332.61,47.06,519.31c-1.74,153.5,13.58,557.79,241.62,560.67c169.44,2.15,194.67-216.18,273.07-321.33 c55.78-74.81,127.6-95.94,216.01-117.82C929.71,603.22,1033.27,483.3,1033.05,324.45z"></path></svg>
       </a>
     </aside>
@@ -184,6 +256,7 @@ const getVariationsArray = (art: any) => {
       
       <section 
         class="w-full h-[75svh] lg:h-full lg:w-[70%] flex-none relative bg-black overflow-hidden group cursor-zoom-in touch-manipulation select-none shadow-2xl shrink-0 order-1"
+        aria-label="ギャラリーハイライト"
         onclick="window.handleHeroInteraction(event)"
       >
         <div id="hero-expand-hint" class="absolute inset-0 flex items-center justify-center pointer-events-none opacity-0 transition-opacity duration-700 z-30 hidden">
@@ -198,20 +271,30 @@ const getVariationsArray = (art: any) => {
         </div>
 
         <div id="hero-slider-wrapper" class="w-full h-full absolute inset-0 transition-opacity duration-700 z-0">
-          <div id="hero-slider" class="splide w-full h-full">
+          <div id="hero-slider" class="splide w-full h-full" aria-label="メインスライダー">
             <div class="splide__track w-full h-full">
               <ul class="splide__list w-full h-full">
-                {displaySliders.map((slide: any) => {
+                {displaySliders.map((slide: any, index: number) => {
                   const src = secureUrl(slide.featuredImage?.node?.sourceUrl) || placeholderImg;
                   const themeColor = slide.memberColor ? getValidColor(slide.memberColor) : globalBaseColor;
                   const bgColor = hexToRgba(themeColor, 0.75);
                   const borderColor = hexToRgba(themeColor, 0.5);
                   const textClass = getTextColorClasses(themeColor).main;
 
+                  // 1枚目の画像のみ優先度を高め、それ以外は遅延読み込みにしてパフォーマンスを向上させます
+                  const isPriority = index === 0;
+
                   return (
                     <li class="splide__slide w-full h-full relative">
-                      <img src={src} class="js-main-bg absolute inset-0 w-full h-full object-cover opacity-70 blur-[20px] pointer-events-none" referrerpolicy="no-referrer" />
-                      <img src={src} fetchpriority="high" class="js-main-img absolute inset-0 w-full h-full object-contain z-10" referrerpolicy="no-referrer" />
+                      <img src={src} alt="" class="js-main-bg absolute inset-0 w-full h-full object-cover opacity-70 blur-[20px] pointer-events-none" aria-hidden="true" referrerpolicy="no-referrer" />
+                      <img 
+                        src={src} 
+                        alt={slide.title || 'Slide Image'} 
+                        fetchpriority={isPriority ? "high" : "auto"} 
+                        loading={isPriority ? "eager" : "lazy"} 
+                        class="js-main-img absolute inset-0 w-full h-full object-contain z-10" 
+                        referrerpolicy="no-referrer" 
+                      />
                       
                       {slide.title && (
                         <div class="js-slide-title absolute top-20 right-4 lg:top-auto lg:bottom-10 lg:right-10 z-20 pointer-events-none text-right">
@@ -232,27 +315,28 @@ const getVariationsArray = (art: any) => {
         </div>
 
         <div id="hero-static-wrapper" class="w-full h-full absolute inset-0 transition-opacity duration-700 opacity-0 hidden z-0">
-          <img id="hero-static-bg" src="" class="absolute inset-0 w-full h-full object-cover opacity-70 blur-[20px] transition-opacity duration-500 pointer-events-none" referrerpolicy="no-referrer" />
-          <img id="hero-static-img" src="" class="absolute inset-0 w-full h-full object-contain z-10 transition-all duration-700 ease-out" referrerpolicy="no-referrer" />
+          <img id="hero-static-bg" src="" alt="" class="absolute inset-0 w-full h-full object-cover opacity-70 blur-[20px] transition-opacity duration-500 pointer-events-none" aria-hidden="true" referrerpolicy="no-referrer" />
+          <img id="hero-static-img" src="" alt="Selected Image" class="absolute inset-0 w-full h-full object-contain z-10 transition-all duration-700 ease-out" referrerpolicy="no-referrer" />
         </div>
         
-        <div class="absolute bottom-0 left-0 w-full h-[35%] bg-gradient-to-t from-[#050505]/95 via-[#050505]/30 to-transparent pointer-events-none z-10"></div>
+        <div class="absolute bottom-0 left-0 w-full h-[35%] bg-gradient-to-t from-[#050505]/95 via-[#050505]/30 to-transparent pointer-events-none z-10" aria-hidden="true"></div>
         
-        <div class="absolute bottom-6 lg:bottom-10 left-0 px-6 lg:px-10 w-full pointer-events-none z-10 flex items-end">
+        <header class="absolute bottom-6 lg:bottom-10 left-0 px-6 lg:px-10 w-full pointer-events-none z-10 flex items-end">
           <div>
-            <h1 id="hero-title" class="text-3xl lg:text-6xl font-light tracking-tighter text-transparent bg-clip-text bg-gradient-to-br from-white to-gray-500 [text-shadow:_0_4px_20px_rgb(0_0_0_/_80%)] leading-none transition-opacity duration-300" set:html={siteInfo.title}></h1>
+            <!-- ここは set:html を使っているため、エンティティのままでも正常に表示されますが、念のためデコード済みの値を使用します -->
+            <h1 id="hero-title" class="text-3xl lg:text-6xl font-light tracking-tighter text-transparent bg-clip-text bg-gradient-to-br from-white to-gray-500 [text-shadow:_0_4px_20px_rgb(0_0_0_/_80%)] leading-none transition-opacity duration-300" set:html={siteTitle}></h1>
             <div id="hero-bio" class="hidden mt-4 w-full pr-4 text-sm lg:text-base text-gray-200 font-light tracking-[0.1em] leading-relaxed [text-shadow:_0_2px_10px_rgb(0_0_0_/_100%)] opacity-0 transition-opacity duration-700"></div>
             <div id="hero-prompt" class="hidden mt-3 w-full pr-4 text-xs lg:text-sm text-gray-400 font-light tracking-wide leading-relaxed [text-shadow:_0_2px_10px_rgb(0_0_0_/_100%)] opacity-0 transition-opacity duration-700"></div>
           </div>
-        </div>
+        </header>
       </section>
 
-      <section class="w-full lg:w-[30%] h-auto lg:h-full relative flex flex-col bg-[#0A0A0C]/80 backdrop-blur-xl border-t lg:border-t-0 lg:border-l border-white/5 order-2" id="right-panel-wrapper">
+      <section class="w-full lg:w-[30%] h-auto lg:h-full relative flex flex-col bg-[#0A0A0C]/80 backdrop-blur-xl border-t lg:border-t-0 lg:border-l border-white/5 order-2" aria-label="コンテンツパネル" id="right-panel-wrapper">
         
         <div class="flex-1 lg:overflow-y-auto scroll-smooth p-5 lg:p-10 pb-32 lg:pb-[110px] hide-scrollbar transition-[padding] duration-300" id="right-panel">
           
-          <div id="view-categories" class="view-section active">
-            <h2 class="text-xl lg:text-2xl font-light mb-6 text-white border-b border-white/10 pb-4 tracking-tight">Models & Characters</h2>
+          <article id="view-categories" class="view-section active" aria-labelledby="models-title">
+            <h2 id="models-title" class="text-xl lg:text-2xl font-light mb-6 text-white border-b border-white/10 pb-4 tracking-tight">Models & Characters</h2>
             <div class="grid grid-cols-2 gap-4 lg:gap-5">
               {models.map((model: any) => {
                 const latestArtworkImg = secureUrl(model.artworks?.nodes?.[0]?.featuredImage?.node?.sourceUrl);
@@ -272,30 +356,33 @@ const getVariationsArray = (art: any) => {
                     data-bio={model.modelBio || ''}
                     data-image={displayImage}
                     data-color={modelColor}
+                    aria-label={`${model.name}の作品を見る`}
                   >
-                    <div class="aspect-square overflow-hidden relative flex-shrink-0">
-                      <img src={avatarSrc} loading="lazy" decoding="async" alt={model.name} class="w-full h-full object-cover object-top group-hover:scale-110 transition-transform duration-700 ease-out" referrerpolicy="no-referrer" />
-                      <div class="absolute inset-0 opacity-0 group-hover:opacity-40 transition-opacity duration-700 pointer-events-none mix-blend-overlay" style={`background: linear-gradient(to top, ${modelColor}, transparent);`}></div>
-                    </div>
-                    
-                    <div class="p-3 lg:p-4 flex-grow backdrop-blur-md transition-colors duration-300" style={`background-color: ${cardTextBgColor}; border-top: 1px solid ${cardTextBorderColor};`}>
-                      <h3 class="font-medium text-white text-base tracking-wide drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">{model.name}</h3>
-                      <p class="text-xs text-white/80 mt-1 font-light drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{model.artworks?.nodes?.length || 0} Works</p>
-                    </div>
+                    <figure class="m-0 flex flex-col h-full">
+                      <div class="aspect-square overflow-hidden relative flex-shrink-0">
+                        <img src={avatarSrc} loading="lazy" decoding="async" alt={model.name} class="w-full h-full object-cover object-top group-hover:scale-110 transition-transform duration-700 ease-out" referrerpolicy="no-referrer" />
+                        <div class="absolute inset-0 opacity-0 group-hover:opacity-40 transition-opacity duration-700 pointer-events-none mix-blend-overlay" style={`background: linear-gradient(to top, ${modelColor}, transparent);`}></div>
+                      </div>
+                      <figcaption class="p-3 lg:p-4 flex-grow backdrop-blur-md transition-colors duration-300" style={`background-color: ${cardTextBgColor}; border-top: 1px solid ${cardTextBorderColor};`}>
+                        <h3 class="font-medium text-white text-base tracking-wide drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">{model.name}</h3>
+                        <p class="text-xs text-white/80 mt-1 font-light drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{model.artworks?.nodes?.length || 0} Works</p>
+                      </figcaption>
+                    </figure>
                   </button>
                 )
               })}
             </div>
-          </div>
+          </article>
 
-          <div id="view-works" class="view-section hidden">
-            <button class="js-back-btn text-gray-400 hover:text-white mb-6 flex items-center text-sm transition-colors group font-light tracking-widest uppercase" data-target="view-categories">
-              <span class="mr-2 transform group-hover:-translate-x-1 transition-transform">←</span> Back to Models
+          <article id="view-works" class="view-section hidden" aria-labelledby="works-title">
+            <button class="js-back-btn text-gray-400 hover:text-white mb-6 flex items-center text-sm transition-colors group font-light tracking-widest uppercase" data-target="view-categories" aria-label="モデル一覧に戻る">
+              <span class="mr-2 transform group-hover:-translate-x-1 transition-transform" aria-hidden="true">←</span> Back to Models
             </button>
             <h2 class="text-xl lg:text-2xl font-light mb-6 text-white border-b border-white/10 pb-4 tracking-tight" id="works-title">Selected Works</h2>
             <div class="grid grid-cols-2 gap-4 lg:gap-5" id="works-grid">
               {allArtworks.map((art: any) => {
                 const src = secureUrl(art.featuredImage?.node?.sourceUrl) || placeholderImg;
+                const altText = art.featuredImage?.node?.altText || art.title;
                 const variations = getVariationsArray(art);
                 const modelColor = getValidColor(art.model?.memberColor);
                 
@@ -314,32 +401,33 @@ const getVariationsArray = (art: any) => {
                     data-variations={JSON.stringify(variations)}
                     data-likes={art.likeCount || 0}
                     data-comments={JSON.stringify(art.guestComments || [])}
+                    aria-label={`${art.title}の詳細を見る`}
                   >
-                    <div class="c-glass-card rounded-2xl overflow-hidden flex flex-col h-full">
+                    <figure class="c-glass-card rounded-2xl overflow-hidden flex flex-col h-full m-0">
                       <div class="aspect-[4/5] overflow-hidden relative flex-shrink-0">
-                        <img src={src} loading="lazy" decoding="async" alt={art.title} class="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-700 ease-out" referrerpolicy="no-referrer" />
+                        <img src={src} loading="lazy" decoding="async" alt={altText} class="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-700 ease-out" referrerpolicy="no-referrer" />
                       </div>
-                      <div class="p-4 flex-grow backdrop-blur-md transition-colors duration-300" style={`background-color: ${workTextBgColor}; border-top: 1px solid ${workTextBorderColor};`}>
+                      <figcaption class="p-4 flex-grow backdrop-blur-md transition-colors duration-300" style={`background-color: ${workTextBgColor}; border-top: 1px solid ${workTextBorderColor};`}>
                         <h3 class="font-medium text-white text-sm lg:text-base leading-tight tracking-wide drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">{art.title}</h3>
-                      </div>
-                    </div>
+                      </figcaption>
+                    </figure>
                   </button>
                 );
               })}
             </div>
-          </div>
+          </article>
 
-          <div id="view-detail" class="view-section hidden">
-            <button class="js-back-btn text-gray-400 hover:text-white mb-6 flex items-center text-sm transition-colors group font-light tracking-widest uppercase" data-target="view-works">
-              <span class="mr-2 transform group-hover:-translate-x-1 transition-transform">←</span> Back to Works
+          <article id="view-detail" class="view-section hidden" aria-label="作品詳細">
+            <button class="js-back-btn text-gray-400 hover:text-white mb-6 flex items-center text-sm transition-colors group font-light tracking-widest uppercase" data-target="view-works" aria-label="作品一覧に戻る">
+              <span class="mr-2 transform group-hover:-translate-x-1 transition-transform" aria-hidden="true">←</span> Back to Works
             </button>
-            <div class="flex overflow-x-auto lg:grid lg:grid-cols-3 xl:grid-cols-4 gap-3 lg:gap-3 mb-8 pb-4 lg:pb-0 snap-x snap-mandatory hide-scrollbar" id="variation-gallery"></div>
+            <div class="flex overflow-x-auto lg:grid lg:grid-cols-3 xl:grid-cols-4 gap-3 lg:gap-3 mb-8 pb-4 lg:pb-0 snap-x snap-mandatory hide-scrollbar" id="variation-gallery" aria-label="バリエーション画像"></div>
             
             <div class="mt-8 mb-4 p-6 bg-gradient-to-br from-[#F43F5E]/10 to-[#F43F5E]/5 border border-[#F43F5E]/20 rounded-2xl flex flex-col items-center justify-center text-center gap-4 relative overflow-hidden group">
-              <div class="absolute inset-0 bg-[#F43F5E]/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500 blur-xl pointer-events-none"></div>
+              <div class="absolute inset-0 bg-[#F43F5E]/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500 blur-xl pointer-events-none" aria-hidden="true"></div>
               <p class="text-white/90 font-light text-sm tracking-wide relative z-10">もっとエッチなのが見たい人は<br class="sm:hidden"/>パトレオンに来てね❤</p>
               <a href="https://www.patreon.com/cw/u73055670?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_creator&utm_content=copyLink" target="_blank" rel="noopener noreferrer" class="relative z-10 inline-flex items-center gap-2 bg-[#F43F5E] hover:bg-[#E11D48] text-white px-6 py-2.5 rounded-full text-sm font-medium transition-all duration-300 shadow-[0_4px_16px_rgba(244,63,94,0.4)] hover:shadow-[0_8px_24px_rgba(244,63,94,0.6)] transform hover:-translate-y-0.5">
-                <svg class="w-4 h-4 fill-current" viewBox="0 0 1080 1080"><path d="M1033.05,324.45c-0.19-137.9-107.59-250.92-233.6-291.7c-156.48-50.64-362.86-43.3-512.28,27.2 C106.07,145.41,49.18,332.61,47.06,519.31c-1.74,153.5,13.58,557.79,241.62,560.67c169.44,2.15,194.67-216.18,273.07-321.33 c55.78-74.81,127.6-95.94,216.01-117.82C929.71,603.22,1033.27,483.3,1033.05,324.45z"></path></svg>
+                <svg class="w-4 h-4 fill-current" viewBox="0 0 1080 1080" aria-hidden="true"><path d="M1033.05,324.45c-0.19-137.9-107.59-250.92-233.6-291.7c-156.48-50.64-362.86-43.3-512.28,27.2 C106.07,145.41,49.18,332.61,47.06,519.31c-1.74,153.5,13.58,557.79,241.62,560.67c169.44,2.15,194.67-216.18,273.07-321.33 c55.78-74.81,127.6-95.94,216.01-117.82C929.71,603.22,1033.27,483.3,1033.05,324.45z"></path></svg>
                 Patreon
               </a>
             </div>
@@ -347,35 +435,35 @@ const getVariationsArray = (art: any) => {
             <div class="flex lg:hidden flex-col mt-4 border-t border-white/10 pt-8 gap-10">
               <div class="flex flex-col gap-4">
                 <div class="flex items-center gap-3">
-                  <button class="outline-none group transform active:scale-90 transition-transform" onclick="window.triggerLikeAnimation(event, true)">
-                    <svg id="btn-like-icon-sp" viewBox="0 0 24 24" class="w-5 h-5 text-white transition-colors duration-300"><path fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
+                  <button class="outline-none group transform active:scale-90 transition-transform" onclick="window.triggerLikeAnimation(event, true)" aria-label="いいねする">
+                    <svg id="btn-like-icon-sp" viewBox="0 0 24 24" class="w-5 h-5 text-white transition-colors duration-300" aria-hidden="true"><path fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
                   </button>
-                  <span id="like-counter-sp" class="font-light text-white tabular-nums text-lg tracking-wider">0</span>
+                  <span id="like-counter-sp" class="font-light text-white tabular-nums text-lg tracking-wider" aria-live="polite">0</span>
                 </div>
-                <button onclick="window.openCommentModal()" class="w-full bg-white/5 rounded-2xl px-5 py-4 border border-white/10 flex items-center justify-between text-left text-gray-400 hover:bg-white/10 transition-colors outline-none">
+                <button onclick="window.openCommentModal()" class="w-full bg-white/5 rounded-2xl px-5 py-4 border border-white/10 flex items-center justify-between text-left text-gray-400 hover:bg-white/10 transition-colors outline-none" aria-label="コメントを開く">
                   <span class="text-sm font-light">コメントを見る...</span>
                   <span class="text-xs bg-white/10 px-2 py-1 rounded-full text-white comment-badge-count">0</span>
                 </button>
               </div>
             </div>
-          </div>
+          </article>
     
         </div>
 
         <div id="interaction-footer" class="hidden max-lg:hidden absolute bottom-0 left-0 w-full h-[90px] bg-[#0A0A0C]/90 backdrop-blur-2xl border-t border-white/5 px-6 items-center gap-4 z-50">
-          <button class="outline-none group transform active:scale-90 transition-transform flex items-center gap-2" onclick="window.triggerLikeAnimation(event, true)">
-            <svg id="btn-like-icon" viewBox="0 0 24 24" class="w-5 h-5 text-white transition-colors duration-300"><path fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
-            <span id="like-counter" class="font-light text-white tabular-nums text-lg tracking-wider">0</span>
+          <button class="outline-none group transform active:scale-90 transition-transform flex items-center gap-2" onclick="window.triggerLikeAnimation(event, true)" aria-label="いいねする">
+            <svg id="btn-like-icon" viewBox="0 0 24 24" class="w-5 h-5 text-white transition-colors duration-300" aria-hidden="true"><path fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
+            <span id="like-counter" class="font-light text-white tabular-nums text-lg tracking-wider" aria-live="polite">0</span>
           </button>
           
-          <button onclick="window.openCommentModal()" class="flex-1 bg-white/5 rounded-full h-11 px-5 border border-white/5 flex items-center justify-between hover:bg-white/10 hover:border-[#F43F5E]/50 transition-colors outline-none group text-gray-400 hover:text-white mx-2">
+          <button onclick="window.openCommentModal()" class="flex-1 bg-white/5 rounded-full h-11 px-5 border border-white/5 flex items-center justify-between hover:bg-white/10 hover:border-[#F43F5E]/50 transition-colors outline-none group text-gray-400 hover:text-white mx-2" aria-label="コメントを開く">
             <span class="text-sm font-light">コメント...</span>
             <span class="text-xs bg-white/10 group-hover:bg-[#F43F5E] text-white px-2 py-0.5 rounded-full transition-colors comment-badge-count">0</span>
           </button>
         </div>
       </section>
 
-      <aside id="pc-sidebar" class="hidden max-lg:!hidden absolute right-0 top-0 w-20 border-l border-white/10 bg-[#151518]/90 backdrop-blur-2xl shadow-[-10px_0_30px_rgba(0,0,0,0.5)] items-center py-8 gap-6 z-[100] transition-opacity duration-300 overflow-y-auto hide-scrollbar">
+      <nav id="pc-sidebar" class="hidden max-lg:!hidden absolute right-0 top-0 w-20 border-l border-white/10 bg-[#151518]/90 backdrop-blur-2xl shadow-[-10px_0_30px_rgba(0,0,0,0.5)] items-center py-8 gap-6 z-[100] transition-opacity duration-300 overflow-y-auto hide-scrollbar" aria-label="モデルナビゲーション">
         {models.map((model: any) => {
           const latestArtworkImg = secureUrl(model.artworks?.nodes?.[0]?.featuredImage?.node?.sourceUrl);
           const avatarSrc = secureUrl(model.modelAvatar?.node?.sourceUrl) || placeholderImg;
@@ -387,8 +475,8 @@ const getVariationsArray = (art: any) => {
           const tooltipTextColor = isLightColor ? '#0A0A0C' : '#FFFFFF';
 
           return (
-            <div 
-              class="relative group cursor-pointer js-nav-trigger shrink-0" 
+            <button 
+              class="relative group cursor-pointer js-nav-trigger shrink-0 outline-none" 
               data-target="view-works" 
               data-model-id={model.id} 
               data-title={model.name}
@@ -396,16 +484,17 @@ const getVariationsArray = (art: any) => {
               data-image={displayImage}
               data-color={modelColor}
               data-text-color={tooltipTextColor}
+              aria-label={`${model.name}の作品を見る`}
               onmouseenter="window.showSidebarTooltip(this)"
               onmouseleave="window.hideSidebarTooltip()"
             >
-              <img src={avatarSrc} loading="lazy" decoding="async" class="w-12 h-12 rounded-full object-cover object-top border-2 border-transparent transition-colors shadow-lg" style={`--hover-color: ${modelColor};`} onmouseover="this.style.borderColor = this.style.getPropertyValue('--hover-color')" onmouseout="this.style.borderColor = 'transparent'" referrerpolicy="no-referrer" />
-            </div>
+              <img src={avatarSrc} loading="lazy" decoding="async" alt={model.name} class="w-12 h-12 rounded-full object-cover object-top border-2 border-transparent transition-colors shadow-lg" style={`--hover-color: ${modelColor};`} onmouseover="this.style.borderColor = this.style.getPropertyValue('--hover-color')" onmouseout="this.style.borderColor = 'transparent'" referrerpolicy="no-referrer" />
+            </button>
           )
         })}
-      </aside>
+      </nav>
 
-      <div id="sp-model-nav" class="lg:hidden fixed bottom-0 left-0 w-full bg-[#151518]/95 backdrop-blur-2xl border-t border-white/10 z-[110] transition-transform duration-500 translate-y-full hidden shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
+      <nav id="sp-model-nav" class="lg:hidden fixed bottom-0 left-0 w-full bg-[#151518]/95 backdrop-blur-2xl border-t border-white/10 z-[110] transition-transform duration-500 translate-y-full hidden shadow-[0_-10px_40px_rgba(0,0,0,0.5)]" aria-label="モバイルモデルナビゲーション">
         <div class="flex overflow-x-auto gap-4 px-6 pt-3 pb-[calc(1rem+env(safe-area-inset-bottom))] snap-x snap-mandatory hide-scrollbar">
           {models.map((model: any) => {
             const latestArtworkImg = secureUrl(model.artworks?.nodes?.[0]?.featuredImage?.node?.sourceUrl);
@@ -422,13 +511,14 @@ const getVariationsArray = (art: any) => {
                 data-bio={model.modelBio || ''}
                 data-image={displayImage}
                 data-color={modelColor}
+                aria-label={`${model.name}の作品を見る`}
               >
                 <img src={avatarSrc} loading="lazy" decoding="async" alt={model.name} class="w-12 h-12 rounded-full object-cover object-top border-2 border-transparent transition-colors shadow-md" style={`--active-color: ${modelColor};`} onmousedown="this.style.borderColor = this.style.getPropertyValue('--active-color')" onmouseup="this.style.borderColor = 'transparent'" referrerpolicy="no-referrer" />
               </button>
             )
           })}
         </div>
-      </div>
+      </nav>
 
     </main>
 
@@ -436,10 +526,10 @@ const getVariationsArray = (art: any) => {
       <div class="flex items-center gap-6 lg:gap-10">
         <div class="flex items-center gap-3 lg:gap-4 shrink-0">
           <div class="w-10 h-10 lg:w-12 lg:h-12 rounded-full overflow-hidden border border-[#F43F5E] p-[1px] shrink-0 bg-black">
-             <img src="https://api.xx-ai-girls-miu.com/wp-content/uploads/2026/04/cropped-01.png" alt="Miu" class="w-full h-full rounded-full object-cover" />
+             <img src="https://api.xx-ai-girls-miu.com/wp-content/uploads/2026/04/cropped-01.png" alt="Miu" loading="lazy" class="w-full h-full rounded-full object-cover" />
           </div>
           <div class="flex flex-col justify-center">
-            <h1 class="text-white text-base lg:text-[22px] font-medium tracking-wide leading-none mb-1">Miu'sGallery</h1>
+            <p class="text-white text-base lg:text-[22px] font-medium tracking-wide leading-none mb-1">Miu'sGallery</p>
             <span class="text-[#F43F5E] text-[8px] lg:text-[10px] tracking-widest font-bold leading-none uppercase">AI GIRLS GALLERY</span>
           </div>
         </div>
@@ -451,38 +541,38 @@ const getVariationsArray = (art: any) => {
       
       <div class="flex items-center gap-2 lg:gap-3 shrink-0">
         <a href="https://www.instagram.com/xx.ai.girls.miu0402/" target="_blank" rel="noopener noreferrer" class="flex items-center justify-center gap-2 px-3 py-2 lg:px-5 lg:py-2 rounded-full border border-white/15 bg-white/5 text-white hover:bg-white/10 hover:border-white/30 transition-all outline-none">
-          <svg class="w-4 h-4 lg:w-5 lg:h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
+          <svg class="w-4 h-4 lg:w-5 lg:h-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
           <span class="hidden sm:block text-xs lg:text-sm font-light tracking-wide">Instagram</span>
         </a>
         <a href="https://www.patreon.com/cw/u73055670?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_creator&utm_content=copyLink" target="_blank" rel="noopener noreferrer" class="flex items-center justify-center gap-2 px-3 py-2 lg:px-5 lg:py-2 rounded-full border border-white/15 bg-white/5 text-white hover:bg-white/10 hover:border-white/30 transition-all outline-none">
-          <svg class="w-4 h-4 lg:w-5 lg:h-5" fill="currentColor" viewBox="0 0 1080 1080"><path d="M1033.05,324.45c-0.19-137.9-107.59-250.92-233.6-291.7c-156.48-50.64-362.86-43.3-512.28,27.2 C106.07,145.41,49.18,332.61,47.06,519.31c-1.74,153.5,13.58,557.79,241.62,560.67c169.44,2.15,194.67-216.18,273.07-321.33 c55.78-74.81,127.6-95.94,216.01-117.82C929.71,603.22,1033.27,483.3,1033.05,324.45z"></path></svg>
+          <svg class="w-4 h-4 lg:w-5 lg:h-5" fill="currentColor" viewBox="0 0 1080 1080" aria-hidden="true"><path d="M1033.05,324.45c-0.19-137.9-107.59-250.92-233.6-291.7c-156.48-50.64-362.86-43.3-512.28,27.2 C106.07,145.41,49.18,332.61,47.06,519.31c-1.74,153.5,13.58,557.79,241.62,560.67c169.44,2.15,194.67-216.18,273.07-321.33 c55.78-74.81,127.6-95.94,216.01-117.82C929.71,603.22,1033.27,483.3,1033.05,324.45z"></path></svg>
           <span class="hidden sm:block text-xs lg:text-sm font-light tracking-wide">Patreon</span>
         </a>
       </div>
     </footer>
 
-    <dialog id="comment-modal" class="bg-transparent m-auto p-0 w-full h-full max-w-md backdrop:bg-[#050505]/90 overflow-hidden outline-none z-[250] overscroll-contain">
+    <dialog id="comment-modal" aria-labelledby="comment-modal-title" class="bg-transparent m-auto p-0 w-full h-full max-w-md backdrop:bg-[#050505]/90 overflow-hidden outline-none z-[250] overscroll-contain">
       <div class="bg-[#151518] rounded-3xl border border-white/10 shadow-2xl flex flex-col h-[80vh] max-h-[700px] w-[90%] max-w-sm mx-auto mt-[10vh] overflow-hidden transform scale-95 opacity-0 transition-all duration-300" id="comment-modal-content">
         <div class="p-4 px-6 border-b border-white/5 flex justify-between items-center bg-[#0A0A0C] shrink-0">
-          <h3 class="text-white font-light tracking-wide">Comments <span class="text-gray-500 text-xs ml-2" id="modal-comment-count">0</span></h3>
-          <button onclick="window.closeCommentModal()" class="text-gray-400 hover:text-[#F43F5E] outline-none transition-colors p-1">
+          <h3 id="comment-modal-title" class="text-white font-light tracking-wide">Comments <span class="text-gray-500 text-xs ml-2" id="modal-comment-count">0</span></h3>
+          <button onclick="window.closeCommentModal()" class="text-gray-400 hover:text-[#F43F5E] outline-none transition-colors p-1" aria-label="閉じる">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
           </button>
         </div>
         
-        <div class="flex-1 overflow-y-auto p-6 scroll-smooth overscroll-contain" id="comment-list">
+        <div class="flex-1 overflow-y-auto p-6 scroll-smooth overscroll-contain" id="comment-list" aria-live="polite">
         </div>
 
         <div class="p-4 border-t border-white/5 bg-[#0A0A0C] shrink-0 relative pb-[calc(1rem+env(safe-area-inset-bottom))]">
           <div id="reply-indicator" class="hidden absolute top-0 left-4 -translate-y-[calc(100%-1px)] bg-[#151518] border border-white/10 border-b-0 rounded-t-xl px-4 py-1.5 items-center gap-4 z-0 text-xs shadow-lg">
             <span class="text-gray-400 font-light"><span id="reply-indicator-name" class="text-white font-medium"></span> さんに返信中...</span>
-            <button onclick="window.cancelReply()" class="text-gray-500 hover:text-[#F43F5E] outline-none p-1">✕</button>
+            <button onclick="window.cancelReply()" class="text-gray-500 hover:text-[#F43F5E] outline-none p-1" aria-label="返信をキャンセル">✕</button>
           </div>
 
           <div id="comment-form-wrapper" class="relative z-10 bg-[#0A0A0C]">
-            <input type="text" id="comment-author" placeholder="名前 (任意)" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm mb-2 outline-none focus:border-[#F43F5E] transition-colors font-light" />
+            <input type="text" id="comment-author" placeholder="名前 (任意)" aria-label="名前" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm mb-2 outline-none focus:border-[#F43F5E] transition-colors font-light" />
             <div class="flex gap-2">
-              <input type="text" id="comment-content" placeholder="コメントを入力..." class="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm outline-none focus:border-[#F43F5E] transition-colors font-light" onkeydown="if(event.key==='Enter') window.submitComment()" />
+              <input type="text" id="comment-content" placeholder="コメントを入力..." aria-label="コメント" class="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm outline-none focus:border-[#F43F5E] transition-colors font-light" onkeydown="if(event.key==='Enter') window.submitComment()" />
               <button type="button" onclick="window.submitComment()" id="comment-submit-btn" class="bg-white/10 text-white px-4 py-2 rounded-lg text-sm font-light hover:bg-[#F43F5E] transition-colors outline-none shrink-0">送信</button>
             </div>
           </div>
@@ -490,7 +580,7 @@ const getVariationsArray = (art: any) => {
       </div>
     </dialog>
 
-    <dialog id="lightbox" class="bg-transparent m-auto p-0 w-full h-full max-w-none max-h-none backdrop:bg-[#050505]/95 overflow-hidden outline-none z-[250] overscroll-contain">
+    <dialog id="lightbox" aria-label="画像拡大プレビュー" class="bg-transparent m-auto p-0 w-full h-full max-w-none max-h-none backdrop:bg-[#050505]/95 overflow-hidden outline-none z-[250] overscroll-contain">
       <div id="swipe-hint" class="absolute inset-0 flex items-center justify-center pointer-events-none z-[260] lg:hidden opacity-0 transition-opacity duration-500">
         <div class="bg-[#0A0A0C]/70 backdrop-blur-md px-6 py-4 rounded-3xl flex flex-col items-center gap-3 border border-white/10 shadow-2xl">
           <svg class="w-8 h-8 text-white animate-swipe-hand" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"></path></svg>
@@ -498,20 +588,20 @@ const getVariationsArray = (art: any) => {
         </div>
       </div>
 
-      <button onclick="window.closeLightbox()" class="fixed top-6 right-6 lg:top-12 lg:right-12 text-white hover:text-[#F43F5E] transition-colors p-3 rounded-full z-[260] bg-white/5 backdrop-blur-md border border-white/10">
+      <button onclick="window.closeLightbox()" class="fixed top-6 right-6 lg:top-12 lg:right-12 text-white hover:text-[#F43F5E] transition-colors p-3 rounded-full z-[260] bg-white/5 backdrop-blur-md border border-white/10" aria-label="閉じる">
         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
       </button>
 
-      <button id="lightbox-prev" class="fixed left-4 lg:left-8 top-1/2 -translate-y-1/2 z-[260] text-white hover:text-[#F43F5E] p-3 lg:p-4 rounded-full bg-black/50 backdrop-blur-md border border-white/10 hidden max-lg:!hidden transition-colors outline-none" onclick="window.prevLightboxImage(event)">
+      <button id="lightbox-prev" class="fixed left-4 lg:left-8 top-1/2 -translate-y-1/2 z-[260] text-white hover:text-[#F43F5E] p-3 lg:p-4 rounded-full bg-black/50 backdrop-blur-md border border-white/10 hidden max-lg:!hidden transition-colors outline-none" onclick="window.prevLightboxImage(event)" aria-label="前の画像">
         <svg class="w-6 h-6 lg:w-8 lg:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
       </button>
-      <button id="lightbox-next" class="fixed right-4 lg:right-8 top-1/2 -translate-y-1/2 z-[260] text-white hover:text-[#F43F5E] p-3 lg:p-4 rounded-full bg-black/50 backdrop-blur-md border border-white/10 hidden max-lg:!hidden transition-colors outline-none" onclick="window.nextLightboxImage(event)">
+      <button id="lightbox-next" class="fixed right-4 lg:right-8 top-1/2 -translate-y-1/2 z-[260] text-white hover:text-[#F43F5E] p-3 lg:p-4 rounded-full bg-black/50 backdrop-blur-md border border-white/10 hidden max-lg:!hidden transition-colors outline-none" onclick="window.nextLightboxImage(event)" aria-label="次の画像">
         <svg class="w-6 h-6 lg:w-8 lg:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
       </button>
 
       <div id="lightbox-container" class="relative w-full h-full overflow-auto flex cursor-grab active:cursor-grabbing select-none z-[250] touch-none hide-scrollbar">
         <div class="m-auto w-full h-full flex items-center justify-center p-4 lg:p-12 pointer-events-none" id="lightbox-scale-wrapper">
-          <img id="lightbox-img" src="" class="max-h-[90vh] max-w-full w-auto h-auto shadow-2xl transition-transform duration-200 ease-out pointer-events-auto origin-center" referrerpolicy="no-referrer" />
+          <img id="lightbox-img" src="" alt="拡大画像" class="max-h-[90vh] max-w-full w-auto h-auto shadow-2xl transition-transform duration-200 ease-out pointer-events-auto origin-center" referrerpolicy="no-referrer" />
         </div>
       </div>
     </dialog>
@@ -532,8 +622,6 @@ const getVariationsArray = (art: any) => {
         deferredPrompt: null
       };
 
-      // ▼ DOM要素を毎回取得するように、グローバル変数の参照を関数内に移動しました。
-      // これによりAstroのSPA遷移後も常に「現在画面に表示されている要素」を確実に操作でき、クリック時のバグを防ぎます。
       window.switchView = (targetId, newImage, newTitle, newBio, newPrompt) => {
         const views = document.querySelectorAll('.view-section');
         const pcFooter = document.getElementById('interaction-footer');
@@ -611,7 +699,6 @@ const getVariationsArray = (art: any) => {
           window.toggleHeroMode('slider');
           if(heroPrompt) { heroPrompt.classList.add('opacity-0'); setTimeout(() => heroPrompt.classList.add('hidden'), 300); }
           if(heroTitle) { heroTitle.classList.add('opacity-0'); setTimeout(() => { 
-            // ▼ タイトルが存在しない（nullになる）エラーを回避するためデフォルト値を設定
             heroTitle.innerHTML = window.appState.defaultSiteTitle || "Miu's Gallery"; 
             heroTitle.classList.remove('opacity-0'); 
           }, 300); }
@@ -713,7 +800,6 @@ const getVariationsArray = (art: any) => {
           }).mount();
         }
 
-        // デフォルトタイトルを初回のみ保存
         const heroTitleEl = document.getElementById('hero-title');
         if (heroTitleEl && !window.appState.defaultSiteTitle) {
           window.appState.defaultSiteTitle = heroTitleEl.innerHTML;
