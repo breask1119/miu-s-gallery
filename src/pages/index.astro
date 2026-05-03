@@ -1308,7 +1308,14 @@ const schemaLD = {
         const moveDrag = (x, y) => { 
           if(!isDragging) return; 
           window.appState.panX = startPanX + (x - startX);
-          window.appState.panY = startPanY + (y - startY);
+          
+          // ▼ 修正: ズーム倍率が1（等倍）の場合はY軸への移動を0に固定し、横スワイプだけを許可します
+          if (window.appState.lightboxScale > 1) {
+             window.appState.panY = startPanY + (y - startY);
+          } else {
+             window.appState.panY = 0;
+          }
+          
           updateTransform();
         }; 
         
@@ -1346,12 +1353,9 @@ const schemaLD = {
             }
             updateTransform();
           } else if (e.touches.length === 1) {
-            if (window.appState.lightboxScale > 1) {
-              e.preventDefault(); 
-              moveDrag(e.touches[0].pageX, e.touches[0].pageY);
-            } else {
-               moveDrag(e.touches[0].pageX, e.touches[0].pageY);
-            }
+            // ▼ 修正: スワイプ時の縦スクロールによるガタつきを防ぐため、常にデフォルト挙動を止めます
+            e.preventDefault(); 
+            moveDrag(e.touches[0].pageX, e.touches[0].pageY);
           }
         }, {passive: false});
 
