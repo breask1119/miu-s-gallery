@@ -93,6 +93,36 @@ const getVariationsArray = (art: any) => {
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500&family=Noto+Sans+JP:wght@300;400;500&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/@splidejs/splide@4.1.4/dist/css/splide.min.css" rel="stylesheet">
     
+    <!-- ▼ OneSignalのSDK読み込みと初期化 -->
+    <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+    <script is:inline>
+      window.OneSignalDeferred = window.OneSignalDeferred || [];
+      OneSignalDeferred.push(async function(OneSignal) {
+        await OneSignal.init({
+          appId: "06418ce1-102a-4a7b-a88b-069b594cf919",
+          promptOptions: {
+            slidedown: {
+              prompts: [
+                {
+                  type: "push",
+                  autoPrompt: true,
+                  text: {
+                    actionMessage: "新しいギャラリーが追加されたら通知を受け取りますか？",
+                    acceptButton: "受け取る",
+                    cancelButton: "あとで",
+                  },
+                  delay: {
+                    pageViews: 1,
+                    timeDelay: 5 // ページロードから5秒後にプロンプトを表示します。
+                  }
+                }
+              ]
+            }
+          }
+        });
+      });
+    </script>
+
     <script define:vars={{ wpGraphqlUrl }}>
       window.WP_GRAPHQL_URL = wpGraphqlUrl;
     </script>
@@ -208,7 +238,6 @@ const getVariationsArray = (art: any) => {
           <img id="hero-static-img" src="" class="absolute inset-0 w-full h-full object-contain z-10 transition-all duration-700 ease-out" referrerpolicy="no-referrer" />
         </div>
         
-        <!-- ▼ グラデーションの高さを抑えて、中間の濃さもスッキリさせました -->
         <div class="absolute bottom-0 left-0 w-full h-[35%] bg-gradient-to-t from-[#050505]/95 via-[#050505]/30 to-transparent pointer-events-none z-10"></div>
         
         <div class="absolute bottom-6 lg:bottom-10 left-0 px-6 lg:px-10 w-full pointer-events-none z-10 flex items-end">
