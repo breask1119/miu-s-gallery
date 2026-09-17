@@ -82,14 +82,10 @@ export async function getGalleryData() {
               slug
               featuredImage { node { sourceUrl altText } }
               promptData
-              orderedImages { sourceUrl }
-              likeCount
-              guestComments {
-                id
-                parentId
-                author
-                content
-                date
+              variationImages(first: 50) {
+                nodes {
+                  sourceUrl
+                }
               }
             }
           }
@@ -98,9 +94,22 @@ export async function getGalleryData() {
     }
   `);
 
+  const models = (data?.models?.nodes || []).map((model: any) => ({
+    ...model,
+    artworks: {
+      ...model.artworks,
+      nodes: (model.artworks?.nodes || []).map((art: any) => ({
+        ...art,
+        orderedImages: art.orderedImages || art.variationImages?.nodes || [],
+        likeCount: art.likeCount || 0,
+        guestComments: art.guestComments || [],
+      })),
+    },
+  }));
+
   return {
     siteInfo: data?.generalSettings || { title: "Gallery", description: "" },
     sliders: data?.sliders?.nodes || [],
-    models: data?.models?.nodes || [],
+    models,
   };
 }

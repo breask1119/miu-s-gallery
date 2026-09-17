@@ -2,13 +2,10 @@
 // src/pages/index.astro
 import { ClientRouter } from 'astro:transitions';
 import '../styles/app.scss';
+import '../styles/gallery.css';
 import { getGalleryData } from '../lib/wp';
 
 const { siteInfo, sliders, models } = await getGalleryData();
-
-const allArtworks = models.flatMap((model: any) => 
-  model.artworks?.nodes?.map((art: any) => ({ ...art, model })) || []
-);
 
 const placeholderImg = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1200&auto=format&fit=crop";
 const wpGraphqlUrl = import.meta.env.PUBLIC_WP_GRAPHQL_URL || '';
@@ -31,53 +28,23 @@ const secureUrl = (url: string) => {
   return httpsUrl;
 };
 
-const hexToRgba = (hex: string, alpha: number = 0.5) => {
+const hexToRgbString = (hex: string) => {
   const validHex = hex && hex.trim() !== '' ? hex : '#F43F5E';
-  const r = parseInt(validHex.slice(1, 3), 16);
-  const g = parseInt(validHex.slice(3, 5), 16);
-  const b = parseInt(validHex.slice(5, 7), 16);
-  if (isNaN(r) || isNaN(g) || isNaN(b)) {
-     return `rgba(244, 63, 94, ${alpha})`;
+  let cleanHex = validHex.replace('#', '');
+  if (cleanHex.length === 3) {
+    cleanHex = cleanHex.split('').map(c => c + c).join('');
   }
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  const r = parseInt(cleanHex.slice(0, 2), 16);
+  const g = parseInt(cleanHex.slice(2, 4), 16);
+  const b = parseInt(cleanHex.slice(4, 6), 16);
+  if (isNaN(r) || isNaN(g) || isNaN(b)) {
+    return '244, 63, 94';
+  }
+  return `${r}, ${g}, ${b}`;
 };
 
 const getValidColor = (color: string) => (color && color.trim() !== '') ? color : '#F43F5E';
 
-const getTextColorClasses = (hex: string) => {
-  const validHex = hex && hex.trim() !== '' ? hex : '#F43F5E';
-  const r = parseInt(validHex.slice(1, 3), 16);
-  const g = parseInt(validHex.slice(3, 5), 16);
-  const b = parseInt(validHex.slice(5, 7), 16);
-  
-  if (isNaN(r) || isNaN(g) || isNaN(b)) {
-     return { main: 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]', sub: 'text-white/80 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]' };
-  }
-  
-  const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
-  
-  if (yiq >= 128) {
-    return { main: 'text-[#0A0A0C] font-medium', sub: 'text-[#0A0A0C]/80 font-normal' };
-  } else {
-    return { main: 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] font-light', sub: 'text-white/80 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]' };
-  }
-};
-
-const globalBaseColor = models.length > 0 ? getValidColor(models[0].memberColor) : '#F43F5E';
-
-const displaySliders = sliders && sliders.length > 0 
-  ? sliders 
-  : [{ featuredImage: { node: { sourceUrl: placeholderImg } }, title: 'Welcome' }];
-
-const getVariationsArray = (art: any) => {
-  const images = art.orderedImages;
-  if (images && images.length > 0) {
-    return images.map((img: any) => secureUrl(img.sourceUrl));
-  }
-  return [secureUrl(art.featuredImage?.node?.sourceUrl) || placeholderImg];
-};
-
-// WordPressから取得した文字列に含まれるHTMLエンティティ（&#039; など）を元の文字に変換する関数です
 const decodeHtmlEntities = (str: string) => {
   if (!str) return '';
   return str
@@ -90,13 +57,72 @@ const decodeHtmlEntities = (str: string) => {
     .replace(/&#8216;/g, '‘');
 };
 
-// SEOやメタデータ用の変数を定義します（デコード処理を挟んでいます）
-const siteTitle = decodeHtmlEntities(siteInfo.title) || "Miu's Gallery | AI Girls Gallery";
-const siteDescription = decodeHtmlEntities(siteInfo.description) || "オリジナルAIキャラクター「美羽」たちの美麗な写真をお届けするギャラリーサイトです。";
-const siteUrl = Astro.site ? Astro.site.toString() : "https://xx-ai-girls-miu.com/";
-const ogImageUrl = secureUrl(displaySliders[0]?.featuredImage?.node?.sourceUrl) || placeholderImg;
+const getVariationsArray = (art: any) => {
+  const images = art.orderedImages || art.variationImages?.nodes;
+  if (images && images.length > 0) {
+    return images.map((img: any) => secureUrl(img.sourceUrl));
+  }
+  const featured = secureUrl(art.featuredImage?.node?.sourceUrl);
+  return featured ? [featured] : [placeholderImg];
+};
 
-// 検索エンジン向けの構造化データ（JSON-LD）を構築します
+// クライアント側UI用データ構造に変換
+const charactersData = models.map((m: any) => {
+  const color = getValidColor(m.memberColor);
+  const rgb = hexToRgbString(color);
+  const avatar = secureUrl(m.modelAvatar?.node?.sourceUrl) || placeholderImg;
+  const works = (m.artworks?.nodes || []).map((art: any) => {
+    const cover = secureUrl(art.featuredImage?.node?.sourceUrl) || placeholderImg;
+    const variationUrls = getVariationsArray(art);
+    const allImgUrls = variationUrls.length > 0 ? variationUrls : [cover];
+    const photos = allImgUrls.map((url: string, idx: number) => ({
+      id: `${art.databaseId || art.id}-${idx}`,
+      title: `${art.title} #${String(idx + 1).padStart(2, '0')}`,
+      image: url,
+      modelName: m.name,
+      workTitle: art.title,
+    }));
+    return {
+      id: art.id,
+      databaseId: art.databaseId || 0,
+      title: art.title,
+      slug: art.slug,
+      coverImage: cover,
+      photos,
+      promptData: art.promptData || '',
+      likeCount: art.likeCount || 0,
+      guestComments: art.guestComments || [],
+    };
+  });
+  return {
+    id: m.slug || m.id,
+    dbId: m.id,
+    name: m.name,
+    bio: m.modelBio || '',
+    color,
+    rgb,
+    avatar,
+    works,
+  };
+});
+
+// トップ画面用スライダーデータ
+const slidesData = (sliders && sliders.length > 0 ? sliders : [{
+  title: 'Welcome',
+  featuredImage: { node: { sourceUrl: placeholderImg } },
+  memberColor: '#F43F5E'
+}]).map((s: any) => ({
+  title: s.title || '',
+  image: secureUrl(s.featuredImage?.node?.sourceUrl) || placeholderImg,
+  color: getValidColor(s.memberColor),
+  rgb: hexToRgbString(s.memberColor),
+}));
+
+const siteTitle = decodeHtmlEntities(siteInfo.title) || "Miu's Gallery | Fine Photography & Character Archive";
+const siteDescription = decodeHtmlEntities(siteInfo.description) || "オリジナルキャラクターの「美羽」達の美麗な写真をお楽しみください。";
+const siteUrl = Astro.site ? Astro.site.toString() : "https://xx-ai-girls-miu.com/";
+const ogImageUrl = slidesData[0]?.image || placeholderImg;
+
 const schemaLD = {
   "@context": "https://schema.org",
   "@type": "ImageGallery",
@@ -111,12 +137,13 @@ const schemaLD = {
 };
 ---
 
+<!DOCTYPE html>
 <html lang="ja" class="dark">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     
-    <!-- SEOメタデータとOGPの設定を行います -->
+    <!-- SEO & OGP -->
     <title>{siteTitle}</title>
     <meta name="description" content={siteDescription} />
     <link rel="canonical" href={siteUrl} />
@@ -133,37 +160,39 @@ const schemaLD = {
     <meta name="twitter:description" content={siteDescription} />
     <meta name="twitter:image" content={ogImageUrl} />
 
-    <!-- ファビコンとApple Touch Iconの設定をPNG形式で追加します -->
+    <!-- PWA & Favicon -->
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="theme-color" content="#050505" />
+    <meta name="theme-color" content="#060608" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Miu's Gallery" />
     
     <ClientRouter />
-    
-    <!-- Service Workerの登録とキャッシュ自動更新処理を追加します -->
+
+    <!-- Service Worker Registration -->
     <script>
       import { registerSW } from 'virtual:pwa-register';
-      
       if ('serviceWorker' in navigator) {
         const updateSW = registerSW({
           immediate: true,
           onNeedRefresh() {
-            // 新しいビルドがデプロイされた際、古いキャッシュを破棄して強制リフレッシュします
             updateSW(true);
           }
         });
       }
     </script>
 
+    <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500&family=Noto+Sans+JP:wght@300;400;500&display=swap" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/@splidejs/splide@4.1.4/dist/css/splide.min.css" rel="stylesheet">
-    
-    <!-- 構造化データを挿入します -->
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;800&family=Noto+Sans+JP:wght@300;400;500;700&family=Outfit:wght@200;300;400;600;800&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+
+    <!-- JSON-LD 構造化データ -->
     <script type="application/ld+json" set:html={JSON.stringify(schemaLD)} />
 
+    <!-- OneSignal Web Push SDK -->
     <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
     <script is:inline>
       window.OneSignalDeferred = window.OneSignalDeferred || [];
@@ -196,711 +225,923 @@ const schemaLD = {
     <script define:vars={{ wpGraphqlUrl }}>
       window.WP_GRAPHQL_URL = wpGraphqlUrl;
     </script>
-    <style>
-      @keyframes swipe-hand {
-        0% { transform: translateX(20px); opacity: 0; }
-        20% { opacity: 1; }
-        80% { transform: translateX(-20px); opacity: 1; }
-        100% { transform: translateX(-30px); opacity: 0; }
-      }
-      .animate-swipe-hand { animation: swipe-hand 1.5s ease-in-out infinite; }
-      .hide-scrollbar::-webkit-scrollbar { display: none; }
-      .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-    </style>
   </head>
-  <body class="bg-[#050505] text-gray-200 antialiased selection:bg-[#F43F5E] selection:text-white max-lg:overflow-x-hidden max-lg:min-h-screen lg:overflow-hidden u-bg-noise font-light flex flex-col lg:h-[100dvh]">
-    
-    <!-- PWA Install Prompt -->
-    <div id="pwa-install-prompt" class="fixed bottom-4 left-1/2 -translate-x-1/2 z-[300] w-[92%] max-w-sm bg-[#151518]/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-[0_10px_40px_rgba(0,0,0,0.8)] p-4 lg:p-5 flex flex-col gap-3 translate-y-[150%] transition-transform duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]">
-      <div class="flex items-start justify-between gap-3">
-        <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-xl overflow-hidden shrink-0 border border-[#F43F5E]/50 bg-black">
-            <img src="https://api.xx-ai-girls-miu.com/wp-content/uploads/2026/04/cropped-01.png" alt="App Icon" class="w-full h-full object-cover" />
-          </div>
-          <div>
-            <h3 class="text-white text-sm font-medium tracking-wide">アプリとして追加</h3>
-            <p class="text-gray-400 text-xs mt-0.5 leading-snug">ホーム画面に追加してフルスクリーンでお楽しみください。</p>
-          </div>
-        </div>
-        <button id="pwa-close-btn" aria-label="閉じる" class="text-gray-500 hover:text-white transition-colors p-1 shrink-0 -mt-1 -mr-1">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-        </button>
-      </div>
 
-      <div id="pwa-ios-instructions" class="hidden text-xs text-gray-300 bg-white/5 rounded-lg p-3 border border-white/5">
-        <ol class="list-decimal list-inside space-y-1 ml-1">
-          <li>画面下部の <svg class="w-4 h-4 inline-block align-text-bottom mx-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg> 共有ボタンをタップ</li>
-          <li>「<span class="font-medium text-white">ホーム画面に追加</span>」をタップ</li>
-        </ol>
-      </div>
+  <body class="bg-base text-slate-100 selection:bg-rose-500 selection:text-white">
+    <!-- Dynamic Ambient Background (GPU Accelerated) -->
+    <div id="ambient-aura-layer" class="ambient-aura-layer" aria-hidden="true"></div>
 
-      <button id="pwa-install-btn" class="hidden w-full bg-[#F43F5E] hover:bg-[#E11D48] text-white text-sm font-medium py-2.5 rounded-xl transition-colors shadow-[0_4px_12px_rgba(244,63,94,0.3)]">
-        インストールする
-      </button>
+    <!-- Interactive Custom Cursor (PC fine pointer only) -->
+    <div id="custom-cursor" class="custom-cursor" aria-hidden="true">
+      <div class="cursor-dot"></div>
+      <div class="cursor-ring"></div>
+      <span class="cursor-label">EXPAND</span>
     </div>
 
-    <div id="custom-cursor" class="hidden lg:flex" aria-hidden="true"><span id="cursor-text"></span></div>
+    <!-- Floating Top Bar: Logo, Social Links & About -->
+    <header class="floating-top-bar" id="floating-top-bar">
+      <div class="floating-brand-group">
+        <button class="floating-brand-logo" id="brand-home-link" aria-label="Miu's Gallery Home">
+          <span class="brand-sym">✦</span>
+          <span>Miu's <span class="brand-sub">Gallery</span></span>
+        </button>
 
-    <div id="global-sidebar-tooltip" class="fixed z-[150] text-xs px-3 py-1.5 rounded-lg opacity-0 transition-opacity duration-200 pointer-events-none whitespace-nowrap shadow-xl border border-white/20 font-light tracking-wide -translate-y-1/2" aria-hidden="true"></div>
+        <div class="floating-social-links">
+          <!-- Instagram -->
+          <a href="https://www.instagram.com/xx.ai.girls.miu0402/" target="_blank" rel="noopener noreferrer" class="social-icon-btn instagram-btn" aria-label="Instagram">
+            <svg class="social-svg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
+              <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
+              <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
+            </svg>
+          </a>
 
-    <aside id="global-sns-nav" class="fixed right-4 bottom-28 z-[80] flex flex-col gap-3 lg:hidden transition-transform duration-500 ease-out" aria-label="ソーシャルリンク">
-      <a href="https://www.instagram.com/xx.ai.girls.miu0402/" target="_blank" rel="noopener noreferrer" aria-label="Instagram" class="w-10 h-10 rounded-full bg-[#151518]/80 backdrop-blur-xl border border-white/10 flex items-center justify-center text-white hover:text-[#F43F5E] hover:border-[#F43F5E]/50 transition-all shadow-[0_8px_32px_0_rgba(0,0,0,0.5)]">
-        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
-      </a>
-      <a href="https://www.patreon.com/cw/u73055670?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_creator&utm_content=copyLink" target="_blank" rel="noopener noreferrer" aria-label="Patreon" class="w-10 h-10 rounded-full bg-[#151518]/80 backdrop-blur-xl border border-white/10 flex items-center justify-center text-white hover:text-[#F43F5E] hover:border-[#F43F5E]/50 transition-all shadow-[0_8px_32px_0_rgba(0,0,0,0.5)]">
-        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 1080 1080"><path d="M1033.05,324.45c-0.19-137.9-107.59-250.92-233.6-291.7c-156.48-50.64-362.86-43.3-512.28,27.2 C106.07,145.41,49.18,332.61,47.06,519.31c-1.74,153.5,13.58,557.79,241.62,560.67c169.44,2.15,194.67-216.18,273.07-321.33 c55.78-74.81,127.6-95.94,216.01-117.82C929.71,603.22,1033.27,483.3,1033.05,324.45z"></path></svg>
-      </a>
-    </aside>
+          <!-- Patreon -->
+          <a href="https://www.patreon.com/cw/u73055670?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_creator&utm_content=copyLink" target="_blank" rel="noopener noreferrer" class="social-icon-btn patreon-btn" aria-label="Patreon">
+            <svg class="social-svg-icon patreon-new-logo" viewBox="0 0 1080 1080" fill="currentColor" aria-hidden="true">
+              <path d="M1033.05,324.45c-0.19-137.9-107.59-250.92-233.6-291.7c-156.48-50.64-362.86-43.3-512.28,27.2 C106.07,145.41,49.18,332.61,47.06,519.31c-1.74,153.5,13.58,557.79,241.62,560.67c169.44,2.15,194.67-216.18,273.07-321.33 c55.78-74.81,127.6-95.94,216.01-117.82C929.71,603.22,1033.27,483.3,1033.05,324.45z"></path>
+            </svg>
+          </a>
 
-    <main class="flex-1 flex flex-col lg:flex-row w-full bg-transparent max-lg:overflow-x-hidden lg:overflow-hidden relative z-10">
-      
-      <section 
-        class="w-full h-[75svh] lg:h-full lg:w-[70%] flex-none relative bg-black overflow-hidden group cursor-zoom-in touch-manipulation select-none shadow-2xl shrink-0 order-1"
-        aria-label="ギャラリーハイライト"
-        onclick="window.handleHeroInteraction(event)"
-      >
-        <div id="hero-expand-hint" class="absolute inset-0 flex items-center justify-center pointer-events-none opacity-0 transition-opacity duration-700 z-30 hidden">
-          <div class="relative flex items-center justify-center">
-            <div class="absolute w-24 h-24 bg-white/20 rounded-full animate-ping"></div>
-            <div class="absolute w-16 h-16 bg-white/30 rounded-full animate-pulse"></div>
-            <span class="relative bg-[#0A0A0C]/60 backdrop-blur-md text-white text-[10px] lg:text-xs font-medium px-4 py-2 rounded-full border border-white/20 whitespace-nowrap shadow-xl tracking-widest">
-              <span class="max-lg:hidden">CLICK TO EXPAND</span>
-              <span class="lg:hidden">TAP TO EXPAND</span>
+          <!-- Info / About Button -->
+          <button id="btn-open-info" class="social-icon-btn info-btn" aria-label="About Gallery">
+            <svg class="social-svg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="16" x2="12" y2="12"></line>
+              <line x1="12" y1="8" x2="12.01" y2="8"></line>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- APP MAIN: 100dvh VIEWPORT APP -->
+    <main class="app-viewport-container">
+
+      <!-- LEFT / TOP PANE: DYNAMIC MAIN VISUAL STAGE -->
+      <section class="main-visual-stage" id="main-visual-stage" aria-label="メイン写真ビュー">
+        
+        <!-- Background Ambient Blur Image Layer -->
+        <div class="stage-blur-layer" id="stage-blur-layer">
+          <img id="stage-blur-img" src={slidesData[0]?.image} alt="" aria-hidden="true">
+        </div>
+
+        <!-- Main High-Res Photo Container (Click to expand) -->
+        <div class="stage-photo-wrapper tilt-element" id="stage-photo-wrapper" data-tilt-intensity="6">
+          <img id="main-stage-img" src={slidesData[0]?.image} alt="Featured Photo" class="main-stage-photo" fetchpriority="high">
+          
+          <!-- Expand Prompt Overlay -->
+          <div class="photo-expand-prompt">
+            <span class="prompt-pill">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="15 3 21 3 21 9"></polyline>
+                <polyline points="9 21 3 21 3 15"></polyline>
+                <line x1="21" y1="3" x2="14" y2="10"></line>
+                <line x1="3" y1="21" x2="10" y2="14"></line>
+              </svg>
+              <span class="pc-text">CLICK TO EXPAND</span>
+              <span class="sp-text">TAP TO EXPAND</span>
             </span>
           </div>
         </div>
 
-        <div id="hero-slider-wrapper" class="w-full h-full absolute inset-0 transition-opacity duration-700 z-0">
-          <div id="hero-slider" class="splide w-full h-full" aria-label="メインスライダー">
-            <div class="splide__track w-full h-full">
-              <ul class="splide__list w-full h-full">
-                {displaySliders.map((slide: any, index: number) => {
-                  const src = secureUrl(slide.featuredImage?.node?.sourceUrl) || placeholderImg;
-                  const themeColor = slide.memberColor ? getValidColor(slide.memberColor) : globalBaseColor;
-                  const bgColor = hexToRgba(themeColor, 0.75);
-                  const borderColor = hexToRgba(themeColor, 0.5);
-                  const textClass = getTextColorClasses(themeColor).main;
-
-                  // 1枚目の画像のみ優先度を高め、それ以外は遅延読み込みにしてパフォーマンスを向上させます
-                  const isPriority = index === 0;
-
-                  return (
-                    <li class="splide__slide w-full h-full relative">
-                      <img src={src} alt="" class="js-main-bg absolute inset-0 w-full h-full object-cover opacity-70 blur-[20px] pointer-events-none" aria-hidden="true" referrerpolicy="no-referrer" />
-                      <img 
-                        src={src} 
-                        alt={slide.title || 'Slide Image'} 
-                        fetchpriority={isPriority ? "high" : "auto"} 
-                        loading={isPriority ? "eager" : "lazy"} 
-                        class="js-main-img absolute inset-0 w-full h-full object-contain z-10" 
-                        referrerpolicy="no-referrer" 
-                      />
-                      
-                      {slide.title && (
-                        <div class="js-slide-title absolute top-20 right-4 lg:top-auto lg:bottom-10 lg:right-10 z-20 pointer-events-none text-right">
-                          <h2 
-                            class={`inline-block ${textClass} text-sm lg:text-2xl tracking-widest backdrop-blur-xl px-4 py-2 lg:px-8 lg:py-4 rounded-xl lg:rounded-2xl transition-all duration-500`}
-                            style={`background-color: ${bgColor}; border: 1px solid ${borderColor}; box-shadow: 0 4px 16px rgba(0,0,0,0.6), 0 0 20px ${hexToRgba(themeColor, 0.6)};`}
-                          >
-                            {slide.title}
-                          </h2>
-                        </div>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          </div>
+        <!-- Stage Title Overlay -->
+        <div class="stage-title-overlay" id="stage-title-overlay">
+          <h1 class="stage-clean-title" id="stage-char-name">{slidesData[0]?.title || "Miu's Gallery"}</h1>
         </div>
 
-        <div id="hero-static-wrapper" class="w-full h-full absolute inset-0 transition-opacity duration-700 opacity-0 hidden z-0">
-          <img id="hero-static-bg" src="" alt="" class="absolute inset-0 w-full h-full object-cover opacity-70 blur-[20px] transition-opacity duration-500 pointer-events-none" aria-hidden="true" referrerpolicy="no-referrer" />
-          <img id="hero-static-img" src="" alt="Selected Image" class="absolute inset-0 w-full h-full object-contain z-10 transition-all duration-700 ease-out" referrerpolicy="no-referrer" />
+        <!-- Stage Slider Dots (トップ画面自動スライダー時のインジケーター) -->
+        <div class="stage-slider-dots active" id="stage-slider-dots" aria-hidden="true">
+          {slidesData.map((_, i) => (
+            <button class={`slider-dot ${i === 0 ? 'active' : ''}`} data-slide-index={i} aria-label={`スライド ${i + 1} へ移動`}></button>
+          ))}
         </div>
-        
-        <div class="absolute bottom-0 left-0 w-full h-[35%] bg-gradient-to-t from-[#050505]/95 via-[#050505]/30 to-transparent pointer-events-none z-10" aria-hidden="true"></div>
-        
-        <header class="absolute bottom-6 lg:bottom-10 left-0 px-6 lg:px-10 w-full pointer-events-none z-10 flex items-end">
-          <div>
-            <!-- ここは set:html を使っているため、エンティティのままでも正常に表示されますが、念のためデコード済みの値を使用します -->
-            <h1 id="hero-title" class="text-3xl lg:text-6xl font-light tracking-tighter text-transparent bg-clip-text bg-gradient-to-br from-white to-gray-500 [text-shadow:_0_4px_20px_rgb(0_0_0_/_80%)] leading-none transition-opacity duration-300" set:html={siteTitle}></h1>
-            <div id="hero-bio" class="hidden mt-4 w-full pr-4 text-sm lg:text-base text-gray-200 font-light tracking-[0.1em] leading-relaxed [text-shadow:_0_2px_10px_rgb(0_0_0_/_100%)] opacity-0 transition-opacity duration-700"></div>
-            <div id="hero-prompt" class="hidden mt-3 w-full pr-4 text-xs lg:text-sm text-gray-400 font-light tracking-wide leading-relaxed [text-shadow:_0_2px_10px_rgb(0_0_0_/_100%)] opacity-0 transition-opacity duration-700"></div>
-          </div>
-        </header>
+
       </section>
 
-      <section class="w-full lg:w-[30%] h-auto lg:h-full relative flex flex-col bg-[#0A0A0C]/80 backdrop-blur-xl border-t lg:border-t-0 lg:border-l border-white/5 order-2" aria-label="コンテンツパネル" id="right-panel-wrapper">
+      <!-- RIGHT / BOTTOM PANE: 3-TIER CONTENT & NAVIGATION PANEL -->
+      <aside class="side-content-panel" id="side-content-panel" aria-label="モデル＆作品ナビゲーション">
         
-        <div class="flex-1 lg:overflow-y-auto scroll-smooth p-5 lg:p-10 pb-32 lg:pb-[110px] hide-scrollbar transition-[padding] duration-300" id="right-panel">
+        <!-- TIER 1: CHARACTERS LIST (Initial State) -->
+        <div class="panel-view-section active" id="view-characters">
+          <div class="panel-view-header">
+            <div>
+              <h2 class="panel-heading">MODELS & CHARACTERS</h2>
+              <p class="panel-subtext">モデルを選択して作品アルバムへ</p>
+            </div>
+          </div>
+
+          <div class="characters-grid-list" id="characters-grid-list">
+            <!-- Injected by Client JS from charactersData -->
+          </div>
+        </div>
+
+        <!-- TIER 2: WORKS LIST OF SELECTED MODEL -->
+        <div class="panel-view-section" id="view-works">
           
-          <article id="view-categories" class="view-section active" aria-labelledby="models-title">
-            <h2 id="models-title" class="text-xl lg:text-2xl font-light mb-6 text-white border-b border-white/10 pb-4 tracking-tight">Models & Characters</h2>
-            <div class="grid grid-cols-2 gap-4 lg:gap-5">
-              {models.map((model: any) => {
-                const latestArtworkImg = secureUrl(model.artworks?.nodes?.[0]?.featuredImage?.node?.sourceUrl);
-                const avatarSrc = secureUrl(model.modelAvatar?.node?.sourceUrl) || placeholderImg;
-                const displayImage = latestArtworkImg || avatarSrc;
-                const modelColor = getValidColor(model.memberColor);
-                
-                const cardTextBgColor = hexToRgba(modelColor, 0.35);
-                const cardTextBorderColor = hexToRgba(modelColor, 0.4);
-                
-                return (
-                  <button 
-                    class="js-nav-trigger group c-glass-card rounded-2xl overflow-hidden text-left outline-none flex flex-col h-full" 
-                    data-target="view-works" 
-                    data-model-id={model.id}
-                    data-title={model.name} 
-                    data-bio={model.modelBio || ''}
-                    data-image={displayImage}
-                    data-color={modelColor}
-                    aria-label={`${model.name}の作品を見る`}
-                  >
-                    <figure class="m-0 flex flex-col h-full">
-                      <div class="aspect-square overflow-hidden relative flex-shrink-0">
-                        <img src={avatarSrc} loading="lazy" decoding="async" alt={model.name} class="w-full h-full object-cover object-top group-hover:scale-110 transition-transform duration-700 ease-out" referrerpolicy="no-referrer" />
-                        <div class="absolute inset-0 opacity-0 group-hover:opacity-40 transition-opacity duration-700 pointer-events-none mix-blend-overlay" style={`background: linear-gradient(to top, ${modelColor}, transparent);`}></div>
-                      </div>
-                      <figcaption class="p-3 lg:p-4 flex-grow backdrop-blur-md transition-colors duration-300" style={`background-color: ${cardTextBgColor}; border-top: 1px solid ${cardTextBorderColor};`}>
-                        <h3 class="font-medium text-white text-base tracking-wide drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">{model.name}</h3>
-                        <p class="text-xs text-white/80 mt-1 font-light drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{model.artworks?.nodes?.length || 0} Works</p>
-                      </figcaption>
-                    </figure>
-                  </button>
-                )
-              })}
-            </div>
-          </article>
-
-          <article id="view-works" class="view-section hidden" aria-labelledby="works-title">
-            <button class="js-back-btn text-gray-400 hover:text-white mb-6 flex items-center text-sm transition-colors group font-light tracking-widest uppercase" data-target="view-categories" aria-label="モデル一覧に戻る">
-              <span class="mr-2 transform group-hover:-translate-x-1 transition-transform" aria-hidden="true">←</span> Back to Models
+          <!-- Back Navigation to Models -->
+          <div class="panel-nav-bar">
+            <button class="panel-back-btn" id="btn-back-to-characters" aria-label="モデル一覧に戻る">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="19" y1="12" x2="5" y2="12"></line>
+                <polyline points="12 19 5 12 12 5"></polyline>
+              </svg>
+              <span>MODELS & CHARACTERS</span>
             </button>
-            <h2 class="text-xl lg:text-2xl font-light mb-6 text-white border-b border-white/10 pb-4 tracking-tight" id="works-title">Selected Works</h2>
-            <div class="grid grid-cols-2 gap-4 lg:gap-5" id="works-grid">
-              {allArtworks.map((art: any) => {
-                const src = secureUrl(art.featuredImage?.node?.sourceUrl) || placeholderImg;
-                const altText = art.featuredImage?.node?.altText || art.title;
-                const variations = getVariationsArray(art);
-                const modelColor = getValidColor(art.model?.memberColor);
-                
-                const workTextBgColor = hexToRgba(modelColor, 0.25);
-                const workTextBorderColor = hexToRgba(modelColor, 0.3);
+          </div>
 
-                return (
-                  <button 
-                    class="js-nav-trigger group block w-full text-left outline-none rounded-2xl js-work-item hidden flex flex-col h-full" 
-                    data-target="view-detail"
-                    data-model-id={art.model.id}
-                    data-database-id={art.databaseId}
-                    data-title={art.title} 
-                    data-prompt={art.promptData || ''}
-                    data-image={src}
-                    data-variations={JSON.stringify(variations)}
-                    data-likes={art.likeCount || 0}
-                    data-comments={JSON.stringify(art.guestComments || [])}
-                    aria-label={`${art.title}の詳細を見る`}
-                  >
-                    <figure class="c-glass-card rounded-2xl overflow-hidden flex flex-col h-full m-0">
-                      <div class="aspect-[4/5] overflow-hidden relative flex-shrink-0">
-                        <img src={src} loading="lazy" decoding="async" alt={altText} class="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-700 ease-out" referrerpolicy="no-referrer" />
-                      </div>
-                      <figcaption class="p-4 flex-grow backdrop-blur-md transition-colors duration-300" style={`background-color: ${workTextBgColor}; border-top: 1px solid ${workTextBorderColor};`}>
-                        <h3 class="font-medium text-white text-sm lg:text-base leading-tight tracking-wide drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">{art.title}</h3>
-                      </figcaption>
-                    </figure>
-                  </button>
-                );
-              })}
+          <!-- Selected Model Header Summary Card -->
+          <div class="active-model-card" id="active-model-summary">
+            <div class="model-card-top">
+              <div class="model-avatar-circle">
+                <img id="active-model-avatar" src="" alt="Model Avatar">
+              </div>
+              <div class="model-text-meta">
+                <h3 class="model-card-name" id="active-model-name">Model Name</h3>
+              </div>
+              <div class="model-works-count-pill" id="active-model-works-count">0 Works</div>
             </div>
-          </article>
+            <div id="active-model-bio" class="text-gray-400 text-xs mt-3 leading-relaxed border-t border-white/5 pt-3 hidden font-light"></div>
+          </div>
 
-          <article id="view-detail" class="view-section hidden" aria-label="作品詳細">
-            <button class="js-back-btn text-gray-400 hover:text-white mb-6 flex items-center text-sm transition-colors group font-light tracking-widest uppercase" data-target="view-works" aria-label="作品一覧に戻る">
-              <span class="mr-2 transform group-hover:-translate-x-1 transition-transform" aria-hidden="true">←</span> Back to Works
+          <!-- Works / Albums List -->
+          <div class="section-sub-heading">
+            <span>WORKS & ALBUMS</span>
+            <span class="sub-hint">作品を選択</span>
+          </div>
+          <div class="works-albums-list" id="works-albums-list">
+            <!-- Injected by Client JS -->
+          </div>
+
+        </div>
+
+        <!-- TIER 3: PHOTOS THUMBNAIL GRID (Inside Selected Work) -->
+        <div class="panel-view-section" id="view-photos">
+          
+          <!-- Back Navigation to Works List -->
+          <div class="panel-nav-bar">
+            <button class="panel-back-btn" id="btn-back-to-works" aria-label="作品一覧に戻る">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="19" y1="12" x2="5" y2="12"></line>
+                <polyline points="12 19 5 12 12 5"></polyline>
+              </svg>
+              <span id="btn-back-works-label">WORKS LIST</span>
             </button>
-            <div class="flex overflow-x-auto lg:grid lg:grid-cols-3 xl:grid-cols-4 gap-3 lg:gap-3 mb-8 pb-4 lg:pb-0 snap-x snap-mandatory hide-scrollbar" id="variation-gallery" aria-label="バリエーション画像"></div>
-            
-            <div class="mt-8 mb-4 p-6 bg-gradient-to-br from-[#F43F5E]/10 to-[#F43F5E]/5 border border-[#F43F5E]/20 rounded-2xl flex flex-col items-center justify-center text-center gap-4 relative overflow-hidden group">
-              <div class="absolute inset-0 bg-[#F43F5E]/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500 blur-xl pointer-events-none" aria-hidden="true"></div>
-              <p class="text-white/90 font-light text-sm tracking-wide relative z-10">もっとエッチなのが見たい人は<br class="sm:hidden"/>パトレオンに来てね❤</p>
-              <a href="https://www.patreon.com/cw/u73055670?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_creator&utm_content=copyLink" target="_blank" rel="noopener noreferrer" class="relative z-10 inline-flex items-center gap-2 bg-[#F43F5E] hover:bg-[#E11D48] text-white px-6 py-2.5 rounded-full text-sm font-medium transition-all duration-300 shadow-[0_4px_16px_rgba(244,63,94,0.4)] hover:shadow-[0_8px_24px_rgba(244,63,94,0.6)] transform hover:-translate-y-0.5">
-                <svg class="w-4 h-4 fill-current" viewBox="0 0 1080 1080" aria-hidden="true"><path d="M1033.05,324.45c-0.19-137.9-107.59-250.92-233.6-291.7c-156.48-50.64-362.86-43.3-512.28,27.2 C106.07,145.41,49.18,332.61,47.06,519.31c-1.74,153.5,13.58,557.79,241.62,560.67c169.44,2.15,194.67-216.18,273.07-321.33 c55.78-74.81,127.6-95.94,216.01-117.82C929.71,603.22,1033.27,483.3,1033.05,324.45z"></path></svg>
-                Patreon
-              </a>
-            </div>
+          </div>
 
-            <div class="flex lg:hidden flex-col mt-4 border-t border-white/10 pt-8 gap-10">
-              <div class="flex flex-col gap-4">
-                <div class="flex items-center gap-3">
-                  <button class="outline-none group transform active:scale-90 transition-transform" onclick="window.triggerLikeAnimation(event, true)" aria-label="いいねする">
-                    <svg id="btn-like-icon-sp" viewBox="0 0 24 24" class="w-5 h-5 text-white transition-colors duration-300" aria-hidden="true"><path fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
-                  </button>
-                  <span id="like-counter-sp" class="font-light text-white tabular-nums text-lg tracking-wider" aria-live="polite">0</span>
-                </div>
-                <button onclick="window.openCommentModal()" class="w-full bg-white/5 rounded-2xl px-5 py-4 border border-white/10 flex items-center justify-between text-left text-gray-400 hover:bg-white/10 transition-colors outline-none" aria-label="コメントを開く">
-                  <span class="text-sm font-light">コメントを見る...</span>
-                  <span class="text-xs bg-white/10 px-2 py-1 rounded-full text-white comment-badge-count">0</span>
+          <!-- Active Work Header Card with Like & Comment Buttons -->
+          <div class="active-work-summary-card">
+            <div class="work-summary-top">
+              <h3 class="work-summary-title" id="active-work-title">Work Title</h3>
+              <div class="work-action-group">
+                <!-- Like Button -->
+                <button id="work-like-btn" class="action-pill-btn" aria-label="いいね">
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path>
+                  </svg>
+                  <span id="work-like-count">0</span>
                 </button>
+
+                <!-- Comment Button -->
+                <button id="work-comment-btn" class="action-pill-btn" aria-label="コメントを見る">
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                  </svg>
+                  <span id="work-comment-count">0</span>
+                </button>
+
+                <div class="work-photos-count-badge" id="active-work-photos-count">0 Photos</div>
               </div>
             </div>
-          </article>
-    
+          </div>
+
+          <!-- Thumbnails Grid inside the Work -->
+          <div class="section-sub-heading">
+            <span>PHOTOS IN WORK</span>
+            <span class="sub-hint">タップで大画面切替</span>
+          </div>
+          <div class="photos-thumbnails-grid" id="photos-thumbnails-grid">
+            <!-- Injected by Client JS -->
+          </div>
+
+          <!-- Patreon Banner in Detail -->
+          <div class="mt-8 mb-4 p-5 bg-gradient-to-br from-rose-500/10 to-rose-500/5 border border-rose-500/20 rounded-2xl flex flex-col items-center justify-center text-center gap-3 relative overflow-hidden group">
+            <p class="text-white/90 font-light text-xs sm:text-sm tracking-wide relative z-10">もっと高解像度・限定写真が見たい方は<br/>Patreonをチェックしてね❤</p>
+            <a href="https://www.patreon.com/cw/u73055670?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_creator&utm_content=copyLink" target="_blank" rel="noopener noreferrer" class="relative z-10 inline-flex items-center gap-2 bg-rose-500 hover:bg-rose-600 text-white px-5 py-2 rounded-full text-xs sm:text-sm font-medium transition-all duration-300 shadow-[0_4px_16px_rgba(244,63,94,0.4)]">
+              <span>View on Patreon</span>
+              <span>→</span>
+            </a>
+          </div>
+
         </div>
 
-        <div id="interaction-footer" class="hidden max-lg:hidden absolute bottom-0 left-0 w-full h-[90px] bg-[#0A0A0C]/90 backdrop-blur-2xl border-t border-white/5 px-6 items-center gap-4 z-50">
-          <button class="outline-none group transform active:scale-90 transition-transform flex items-center gap-2" onclick="window.triggerLikeAnimation(event, true)" aria-label="いいねする">
-            <svg id="btn-like-icon" viewBox="0 0 24 24" class="w-5 h-5 text-white transition-colors duration-300" aria-hidden="true"><path fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
-            <span id="like-counter" class="font-light text-white tabular-nums text-lg tracking-wider" aria-live="polite">0</span>
-          </button>
-          
-          <button onclick="window.openCommentModal()" class="flex-1 bg-white/5 rounded-full h-11 px-5 border border-white/5 flex items-center justify-between hover:bg-white/10 hover:border-[#F43F5E]/50 transition-colors outline-none group text-gray-400 hover:text-white mx-2" aria-label="コメントを開く">
-            <span class="text-sm font-light">コメント...</span>
-            <span class="text-xs bg-white/10 group-hover:bg-[#F43F5E] text-white px-2 py-0.5 rounded-full transition-colors comment-badge-count">0</span>
-          </button>
-        </div>
-      </section>
-
-      <nav id="pc-sidebar" class="hidden max-lg:!hidden absolute right-0 top-0 w-20 border-l border-white/10 bg-[#151518]/90 backdrop-blur-2xl shadow-[-10px_0_30px_rgba(0,0,0,0.5)] items-center py-8 gap-6 z-[100] transition-opacity duration-300 overflow-y-auto hide-scrollbar" aria-label="モデルナビゲーション">
-        {models.map((model: any) => {
-          const latestArtworkImg = secureUrl(model.artworks?.nodes?.[0]?.featuredImage?.node?.sourceUrl);
-          const avatarSrc = secureUrl(model.modelAvatar?.node?.sourceUrl) || placeholderImg;
-          const displayImage = latestArtworkImg || avatarSrc;
-          const modelColor = getValidColor(model.memberColor);
-          
-          const textColors = getTextColorClasses(modelColor);
-          const isLightColor = textColors.main.includes('text-[#0A0A0C]');
-          const tooltipTextColor = isLightColor ? '#0A0A0C' : '#FFFFFF';
-
-          return (
-            <button 
-              class="relative group cursor-pointer js-nav-trigger shrink-0 outline-none" 
-              data-target="view-works" 
-              data-model-id={model.id} 
-              data-title={model.name}
-              data-bio={model.modelBio || ''}
-              data-image={displayImage}
-              data-color={modelColor}
-              data-text-color={tooltipTextColor}
-              aria-label={`${model.name}の作品を見る`}
-              onmouseenter="window.showSidebarTooltip(this)"
-              onmouseleave="window.hideSidebarTooltip()"
-            >
-              <img src={avatarSrc} loading="lazy" decoding="async" alt={model.name} class="w-12 h-12 rounded-full object-cover object-top border-2 border-transparent transition-colors shadow-lg" style={`--hover-color: ${modelColor};`} onmouseover="this.style.borderColor = this.style.getPropertyValue('--hover-color')" onmouseout="this.style.borderColor = 'transparent'" referrerpolicy="no-referrer" />
-            </button>
-          )
-        })}
-      </nav>
-
-      <nav id="sp-model-nav" class="lg:hidden fixed bottom-0 left-0 w-full bg-[#151518]/95 backdrop-blur-2xl border-t border-white/10 z-[110] transition-transform duration-500 translate-y-full hidden shadow-[0_-10px_40px_rgba(0,0,0,0.5)]" aria-label="モバイルモデルナビゲーション">
-        <div class="flex overflow-x-auto gap-4 px-6 pt-3 pb-[calc(1rem+env(safe-area-inset-bottom))] snap-x snap-mandatory hide-scrollbar">
-          {models.map((model: any) => {
-            const latestArtworkImg = secureUrl(model.artworks?.nodes?.[0]?.featuredImage?.node?.sourceUrl);
-            const avatarSrc = secureUrl(model.modelAvatar?.node?.sourceUrl) || placeholderImg;
-            const displayImage = latestArtworkImg || avatarSrc;
-            const modelColor = getValidColor(model.memberColor);
-
-            return (
-              <button 
-                class="shrink-0 relative group cursor-pointer js-nav-trigger snap-center outline-none" 
-                data-target="view-works" 
-                data-model-id={model.id} 
-                data-title={model.name}
-                data-bio={model.modelBio || ''}
-                data-image={displayImage}
-                data-color={modelColor}
-                aria-label={`${model.name}の作品を見る`}
-              >
-                <img src={avatarSrc} loading="lazy" decoding="async" alt={model.name} class="w-12 h-12 rounded-full object-cover object-top border-2 border-transparent transition-colors shadow-md" style={`--active-color: ${modelColor};`} onmousedown="this.style.borderColor = this.style.getPropertyValue('--active-color')" onmouseup="this.style.borderColor = 'transparent'" referrerpolicy="no-referrer" />
-              </button>
-            )
-          })}
-        </div>
-      </nav>
+      </aside>
 
     </main>
 
-    <footer class="hidden lg:flex w-full shrink-0 z-[200] bg-[#0A0A0C]/95 backdrop-blur-lg border-t border-white/10 items-center justify-between px-4 lg:px-6 h-[calc(60px+env(safe-area-inset-bottom))] lg:h-[calc(70px+env(safe-area-inset-bottom))] pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_30px_rgba(0,0,0,0.5)] relative">
-      <div class="flex items-center gap-6 lg:gap-10">
-        <div class="flex items-center gap-3 lg:gap-4 shrink-0">
-          <div class="w-10 h-10 lg:w-12 lg:h-12 rounded-full overflow-hidden border border-[#F43F5E] p-[1px] shrink-0 bg-black">
-             <img src="https://api.xx-ai-girls-miu.com/wp-content/uploads/2026/04/cropped-01.png" alt="Miu" loading="lazy" class="w-full h-full rounded-full object-cover" />
+    <!-- FLOATING CHARACTER SWITCHER DOCK (Tier 2 & 3) -->
+    <nav id="character-floating-dock" class="character-floating-dock" aria-label="クイック・キャラクター切り替え">
+      <div class="dock-inner" id="dock-inner">
+        <!-- Injected by Client JS -->
+      </div>
+    </nav>
+
+    <!-- CINEMATIC FULLSCREEN LIGHTBOX MODAL -->
+    <dialog id="cinematic-modal" class="cinematic-lightbox" aria-modal="true" aria-label="高精細写真全画面ビュー">
+      <div class="modal-backdrop-blur" id="modal-backdrop-blur"></div>
+      <div class="modal-content-shell">
+        
+        <!-- Top Utility Bar -->
+        <div class="modal-top-bar">
+          <div class="modal-photo-meta">
+            <span class="modal-cat-badge" id="modal-cat-badge">PHOTO</span>
+            <h2 class="modal-photo-title" id="modal-photo-title">Title</h2>
+            <span class="modal-photo-model" id="modal-photo-model">Model</span>
           </div>
-          <div class="flex flex-col justify-center">
-            <p class="text-white text-base lg:text-[22px] font-medium tracking-wide leading-none mb-1">Miu'sGallery</p>
-            <span class="text-[#F43F5E] text-[8px] lg:text-[10px] tracking-widest font-bold leading-none uppercase">AI GIRLS GALLERY</span>
+
+          <div class="modal-actions">
+            <!-- Modal Like Button -->
+            <button id="modal-like-btn" class="modal-btn" aria-label="いいね">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path>
+              </svg>
+            </button>
+            <!-- Modal Comment Button -->
+            <button id="modal-comment-btn" class="modal-btn" aria-label="コメント">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+              </svg>
+            </button>
+            <button id="modal-prev-btn" class="modal-btn" aria-label="前の写真 (←)">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="15 18 9 12 15 6"></polyline>
+              </svg>
+            </button>
+            <button id="modal-next-btn" class="modal-btn" aria-label="次の写真 (→)">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+            </button>
+            <button id="modal-close-btn" class="modal-btn close-btn" aria-label="閉じる (Esc)">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
           </div>
         </div>
-        
-        <p class="hidden xl:block text-gray-300 text-[13px] font-light tracking-widest shrink-0">
-          オリジナルキャラクターの「美羽」達の美麗な写真をお楽しみください。
-        </p>
-      </div>
-      
-      <div class="flex items-center gap-2 lg:gap-3 shrink-0">
-        <a href="https://www.instagram.com/xx.ai.girls.miu0402/" target="_blank" rel="noopener noreferrer" class="flex items-center justify-center gap-2 px-3 py-2 lg:px-5 lg:py-2 rounded-full border border-white/15 bg-white/5 text-white hover:bg-white/10 hover:border-white/30 transition-all outline-none">
-          <svg class="w-4 h-4 lg:w-5 lg:h-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
-          <span class="hidden sm:block text-xs lg:text-sm font-light tracking-wide">Instagram</span>
-        </a>
-        <a href="https://www.patreon.com/cw/u73055670?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_creator&utm_content=copyLink" target="_blank" rel="noopener noreferrer" class="flex items-center justify-center gap-2 px-3 py-2 lg:px-5 lg:py-2 rounded-full border border-white/15 bg-white/5 text-white hover:bg-white/10 hover:border-white/30 transition-all outline-none">
-          <svg class="w-4 h-4 lg:w-5 lg:h-5" fill="currentColor" viewBox="0 0 1080 1080" aria-hidden="true"><path d="M1033.05,324.45c-0.19-137.9-107.59-250.92-233.6-291.7c-156.48-50.64-362.86-43.3-512.28,27.2 C106.07,145.41,49.18,332.61,47.06,519.31c-1.74,153.5,13.58,557.79,241.62,560.67c169.44,2.15,194.67-216.18,273.07-321.33 c55.78-74.81,127.6-95.94,216.01-117.82C929.71,603.22,1033.27,483.3,1033.05,324.45z"></path></svg>
-          <span class="hidden sm:block text-xs lg:text-sm font-light tracking-wide">Patreon</span>
-        </a>
-      </div>
-    </footer>
 
-    <dialog id="comment-modal" aria-labelledby="comment-modal-title" class="bg-transparent m-auto p-0 w-full h-full max-w-md backdrop:bg-[#050505]/90 overflow-hidden outline-none z-[250] overscroll-contain">
-      <div class="bg-[#151518] rounded-3xl border border-white/10 shadow-2xl flex flex-col h-[80vh] max-h-[700px] w-[90%] max-w-sm mx-auto mt-[10vh] overflow-hidden transform scale-95 opacity-0 transition-all duration-300" id="comment-modal-content">
-        <div class="p-4 px-6 border-b border-white/5 flex justify-between items-center bg-[#0A0A0C] shrink-0">
-          <h3 id="comment-modal-title" class="text-white font-light tracking-wide">Comments <span class="text-gray-500 text-xs ml-2" id="modal-comment-count">0</span></h3>
-          <button onclick="window.closeCommentModal()" class="text-gray-400 hover:text-[#F43F5E] outline-none transition-colors p-1" aria-label="閉じる">
+        <!-- Main Photo Display Area -->
+        <div class="modal-main-stage" id="modal-main-stage">
+          <div class="modal-image-holder" id="modal-image-holder">
+            <img id="modal-img" src="" alt="Expanded Photography" class="modal-highres-img">
+          </div>
+
+          <!-- Swipe Hint Overlay -->
+          <div id="modal-swipe-hint" class="modal-swipe-hint" style="display: none;">
+            <div class="swipe-hint-pill">
+              <span class="swipe-arrow swipe-arrow-left">‹</span>
+              <span class="swipe-hand-icon">👆</span>
+              <span class="swipe-arrow swipe-arrow-right">›</span>
+              <span class="swipe-hint-text">スワイプで写真送り</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </dialog>
+
+    <!-- COMMENTS MODAL / DRAWER -->
+    <dialog id="comment-modal" aria-labelledby="comment-modal-title" class="bg-transparent m-auto p-0 w-full h-full max-w-md backdrop:bg-black/80 overflow-hidden outline-none z-[300] overscroll-contain">
+      <div class="bg-[#121218] rounded-3xl border border-white/10 shadow-2xl flex flex-col h-[82vh] max-h-[720px] w-[92%] max-w-sm mx-auto mt-[9vh] overflow-hidden transform scale-95 opacity-0 transition-all duration-300" id="comment-modal-content">
+        <div class="p-4 px-6 border-b border-white/5 flex justify-between items-center bg-[#09090d] shrink-0">
+          <h3 id="comment-modal-title" class="text-white font-medium text-sm tracking-wide">Comments <span class="text-gray-500 text-xs ml-2" id="modal-comment-count">0</span></h3>
+          <button id="btn-close-comment-modal" class="text-gray-400 hover:text-white outline-none transition-colors p-1" aria-label="閉じる">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
           </button>
         </div>
         
-        <div class="flex-1 overflow-y-auto p-6 scroll-smooth overscroll-contain" id="comment-list" aria-live="polite">
+        <div class="flex-1 overflow-y-auto p-5 space-y-4 scroll-smooth overscroll-contain" id="comment-list" aria-live="polite">
+          <p class="text-gray-500 font-light text-center py-10">まだコメントはありません。<br/>最初のコメントを投稿しよう！</p>
         </div>
 
-        <div class="p-4 border-t border-white/5 bg-[#0A0A0C] shrink-0 relative pb-[calc(1rem+env(safe-area-inset-bottom))]">
-          <div id="reply-indicator" class="hidden absolute top-0 left-4 -translate-y-[calc(100%-1px)] bg-[#151518] border border-white/10 border-b-0 rounded-t-xl px-4 py-1.5 items-center gap-4 z-0 text-xs shadow-lg">
+        <div class="p-4 border-t border-white/5 bg-[#09090d] shrink-0 relative pb-[calc(1rem+env(safe-area-inset-bottom))]">
+          <div id="reply-indicator" class="hidden absolute top-0 left-4 -translate-y-[calc(100%-1px)] bg-[#121218] border border-white/10 border-b-0 rounded-t-xl px-4 py-1.5 items-center gap-4 z-0 text-xs shadow-lg">
             <span class="text-gray-400 font-light"><span id="reply-indicator-name" class="text-white font-medium"></span> さんに返信中...</span>
-            <button onclick="window.cancelReply()" class="text-gray-500 hover:text-[#F43F5E] outline-none p-1" aria-label="返信をキャンセル">✕</button>
+            <button id="btn-cancel-reply" class="text-gray-500 hover:text-rose-400 outline-none p-1" aria-label="返信をキャンセル">✕</button>
           </div>
 
-          <div id="comment-form-wrapper" class="relative z-10 bg-[#0A0A0C]">
-            <input type="text" id="comment-author" placeholder="名前 (任意)" aria-label="名前" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm mb-2 outline-none focus:border-[#F43F5E] transition-colors font-light" />
+          <div id="comment-form-wrapper" class="relative z-10 bg-[#09090d]">
+            <input type="text" id="comment-author" placeholder="名前 (任意)" aria-label="名前" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-xs mb-2 outline-none focus:border-rose-500 transition-colors font-light" />
             <div class="flex gap-2">
-              <input type="text" id="comment-content" placeholder="コメントを入力..." aria-label="コメント" class="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm outline-none focus:border-[#F43F5E] transition-colors font-light" onkeydown="if(event.key==='Enter') window.submitComment()" />
-              <button type="button" onclick="window.submitComment()" id="comment-submit-btn" class="bg-white/10 text-white px-4 py-2 rounded-lg text-sm font-light hover:bg-[#F43F5E] transition-colors outline-none shrink-0">送信</button>
+              <input type="text" id="comment-content" placeholder="コメントを入力..." aria-label="コメント" class="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-xs outline-none focus:border-rose-500 transition-colors font-light" />
+              <button type="button" id="comment-submit-btn" class="bg-rose-500/80 hover:bg-rose-500 text-white px-4 py-2 rounded-lg text-xs font-medium transition-colors outline-none shrink-0">送信</button>
             </div>
           </div>
         </div>
       </div>
     </dialog>
 
-    <dialog id="lightbox" aria-label="画像拡大プレビュー" class="bg-transparent m-auto p-0 w-full h-full max-w-none max-h-none backdrop:bg-[#050505]/95 overflow-hidden outline-none z-[250] overscroll-contain">
-      <div id="swipe-hint" class="absolute inset-0 flex items-center justify-center pointer-events-none z-[260] lg:hidden opacity-0 transition-opacity duration-500">
-        <div class="bg-[#0A0A0C]/70 backdrop-blur-md px-6 py-4 rounded-3xl flex flex-col items-center gap-3 border border-white/10 shadow-2xl">
-          <svg class="w-8 h-8 text-white animate-swipe-hand" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"></path></svg>
-          <span class="text-white text-xs tracking-widest font-light">SWIPE / PINCH</span>
+    <!-- ABOUT / INFO MODAL -->
+    <dialog id="info-modal" class="info-drawer-modal" aria-modal="true" aria-label="Miu's Gallery について">
+      <div class="info-drawer-inner">
+        <div class="drawer-header">
+          <h2 class="drawer-title">ABOUT MIU'S GALLERY</h2>
+          <button id="info-close-btn" class="modal-btn" aria-label="閉じる">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
         </div>
-      </div>
-
-      <button onclick="window.closeLightbox()" class="fixed top-6 right-6 lg:top-12 lg:right-12 text-white hover:text-[#F43F5E] transition-colors p-3 rounded-full z-[260] bg-white/5 backdrop-blur-md border border-white/10" aria-label="閉じる">
-        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-      </button>
-
-      <button id="lightbox-prev" class="fixed left-4 lg:left-8 top-1/2 -translate-y-1/2 z-[260] text-white hover:text-[#F43F5E] p-3 lg:p-4 rounded-full bg-black/50 backdrop-blur-md border border-white/10 hidden max-lg:!hidden transition-colors outline-none" onclick="window.prevLightboxImage(event)" aria-label="前の画像">
-        <svg class="w-6 h-6 lg:w-8 lg:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
-      </button>
-      <button id="lightbox-next" class="fixed right-4 lg:right-8 top-1/2 -translate-y-1/2 z-[260] text-white hover:text-[#F43F5E] p-3 lg:p-4 rounded-full bg-black/50 backdrop-blur-md border border-white/10 hidden max-lg:!hidden transition-colors outline-none" onclick="window.nextLightboxImage(event)" aria-label="次の画像">
-        <svg class="w-6 h-6 lg:w-8 lg:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-      </button>
-
-      <div id="lightbox-container" class="relative w-full h-full overflow-auto flex cursor-grab active:cursor-grabbing select-none z-[250] touch-none hide-scrollbar">
-        <div class="m-auto w-full h-full flex items-center justify-center p-4 lg:p-12 pointer-events-none" id="lightbox-scale-wrapper">
-          <img id="lightbox-img" src="" alt="拡大画像" class="max-h-[90vh] max-w-full w-auto h-auto shadow-2xl transition-transform duration-200 ease-out pointer-events-auto origin-center" referrerpolicy="no-referrer" />
+        <div class="drawer-body">
+          <p class="lead-statement">
+            「各キャラクターの作品世界」と「写真集をめくるようなシームレスな探索」。
+          </p>
+          <p>
+            Miu's Gallery は、オリジナルAIキャラクター「美羽」達の美麗な写真と世界観を、1画面内でスムーズに鑑賞できる次世代フォトギャラリーです。
+          </p>
+          <h3>HOW TO EXPLORE</h3>
+          <ul class="guide-list">
+            <li><strong>モデル選択:</strong> モデル一覧から気になるモデルをタップすると、そのモデルの作品集（Works）が展開。</li>
+            <li><strong>作品選択:</strong> 作品を選ぶと、収録写真のサムネイル一覧が表示され、大画面で鑑賞できます。</li>
+            <li><strong>写真送り:</strong> 左右矢印ボタンや、スマホの画面スワイプで同じ作品内の写真を連続してめくれます。</li>
+            <li><strong>全画面拡大:</strong> メイン写真をタップすると、高精細ズームモーダルが起動。</li>
+            <li><strong>キーボード操作:</strong> <kbd>Esc</kbd> で1階層戻る / モーダルを閉じる、<kbd>←</kbd> <kbd>→</kbd> で写真送り。</li>
+            <li><strong>ダブルタップ:</strong> 作品詳細時やモーダル内でのダブルタップでハートのいいね！が送れます。</li>
+          </ul>
         </div>
       </div>
     </dialog>
 
-    <script src="https://cdn.jsdelivr.net/npm/@splidejs/splide@4.1.4/dist/js/splide.min.js"></script>
+    <!-- Client-side Application Script -->
+    <script define:vars={{ charactersData, slidesData }}>
+      // クライアントサイドの状態管理
+      window.__CHARACTERS_DATA__ = charactersData;
+      window.__SLIDES_DATA__ = slidesData;
+    </script>
 
     <script is:inline>
-      window.appState = window.appState || {
-        clickTimer: null,
-        lastTapTime: 0,
-        heroSlider: null,
-        currentModelData: { databaseId: 0, title: '', bio: '', prompt: '', image: '', likes: 0, comments: [], color: '#F43F5E' },
-        activeReplyId: 0,
-        lightboxScale: 1,
-        panX: 0,
-        panY: 0,
-        isEventsBound: false,
-        deferredPrompt: null
-      };
+      (function() {
+        const characters = window.__CHARACTERS_DATA__ || [];
+        const slides = window.__SLIDES_DATA__ || [];
 
-      window.switchView = (targetId, newImage, newTitle, newBio, newPrompt) => {
-        const views = document.querySelectorAll('.view-section');
-        const pcFooter = document.getElementById('interaction-footer');
-        const spModelNav = document.getElementById('sp-model-nav');
-        const pcSidebar = document.getElementById('pc-sidebar');
-        const heroExpandHint = document.getElementById('hero-expand-hint');
-        const heroTitle = document.getElementById('hero-title');
-        const heroBio = document.getElementById('hero-bio');
-        const heroPrompt = document.getElementById('hero-prompt');
-        const rightPanel = document.getElementById('right-panel');
+        let currentModelId = characters[0]?.id || '';
+        let currentWork = null;
+        let currentPhotosInWork = [];
+        let currentPhotoIndex = 0;
+        let currentAllPhotosFlat = [];
 
-        views.forEach(view => {
-          if (view.id === targetId) { 
-            view.classList.remove('hidden'); 
-            setTimeout(() => view.classList.add('active'), 10); 
-          } else { 
-            view.classList.remove('active'); 
-            setTimeout(() => { if(!view.classList.contains('active')) view.classList.add('hidden'); }, 300); 
-          }
+        // 全写真フラット配列の作成（全画面モーダル用）
+        characters.forEach(c => {
+          c.works.forEach(w => {
+            w.photos.forEach(p => currentAllPhotosFlat.push(p));
+          });
         });
 
-        if (targetId === 'view-detail') {
-          window.history.replaceState(null, '', `#work-${window.appState.currentModelData.databaseId}`);
-          
-          if(pcFooter) { pcFooter.classList.remove('hidden'); pcFooter.classList.add('lg:flex'); }
-          if(spModelNav) { spModelNav.classList.remove('hidden'); setTimeout(() => spModelNav.classList.remove('translate-y-full'), 10); }
-          if(heroExpandHint) { heroExpandHint.classList.remove('hidden'); setTimeout(() => heroExpandHint.classList.remove('opacity-0'), 800); }
-          
-          if(pcSidebar) { 
-            pcSidebar.classList.remove('hidden', 'h-full', 'h-[calc(100%-90px)]'); 
-            pcSidebar.classList.add('flex', 'flex-col', 'h-[calc(100%-90px)]'); 
-          }
-          if(rightPanel) rightPanel.classList.add('lg:pr-[100px]');
-          
-          window.toggleHeroMode('static');
-          if(heroBio) { heroBio.classList.add('opacity-0'); setTimeout(() => heroBio.classList.add('hidden'), 300); }
-          if(heroPrompt) {
-            if (newPrompt) { heroPrompt.innerHTML = newPrompt; heroPrompt.classList.remove('hidden'); setTimeout(() => heroPrompt.classList.remove('opacity-0'), 50); } 
-            else { heroPrompt.classList.add('opacity-0'); setTimeout(() => heroPrompt.classList.add('hidden'), 300); }
-          }
-          if(newTitle && heroTitle) { heroTitle.classList.add('opacity-0'); setTimeout(() => { heroTitle.innerHTML = newTitle; heroTitle.classList.remove('opacity-0'); }, 300); }
-          if(newImage) window.updateHeroImage(newImage);
+        // ヒーロースライダー状態
+        let isHeroSliderActive = true;
+        let heroSliderTimer = null;
+        let heroCurrentIndex = 0;
 
-          window.updateStatsUI();
-          window.fetchLiveStats(window.appState.currentModelData.databaseId);
+        // モーダル状態
+        let modalFilteredList = currentAllPhotosFlat;
+        let modalCurrentIndex = 0;
+        let currentScale = 1;
+        let currentPanX = 0;
+        let currentPanY = 0;
+        let isPinching = false;
+        let isPanning = false;
+        let startPinchDist = 0;
+        let startScale = 1;
+        let touchStartX = 0;
+        let touchStartY = 0;
+        let startPanX = 0;
+        let startPanY = 0;
+        let lastTapTime = 0;
 
-        } else if (targetId === 'view-works') {
-          window.history.replaceState(null, '', window.location.pathname);
-          
-          if(pcFooter) { pcFooter.classList.add('hidden'); pcFooter.classList.remove('lg:flex'); }
-          if(spModelNav) { spModelNav.classList.remove('hidden'); setTimeout(() => spModelNav.classList.remove('translate-y-full'), 10); }
-          if(heroExpandHint) { heroExpandHint.classList.add('opacity-0'); setTimeout(() => heroExpandHint.classList.add('hidden'), 300); }
-          
-          if(pcSidebar) { 
-            pcSidebar.classList.remove('hidden', 'h-[calc(100%-90px)]', 'h-full'); 
-            pcSidebar.classList.add('flex', 'flex-col', 'h-full'); 
-          }
-          if(rightPanel) rightPanel.classList.add('lg:pr-[100px]');
-          
-          window.toggleHeroMode('static');
-          if(heroPrompt) { heroPrompt.classList.add('opacity-0'); setTimeout(() => heroPrompt.classList.add('hidden'), 300); }
-          if(newTitle && heroTitle) { heroTitle.classList.add('opacity-0'); setTimeout(() => { heroTitle.innerHTML = newTitle; heroTitle.classList.remove('opacity-0'); }, 300); }
-          if(heroBio) { heroBio.classList.add('opacity-0'); setTimeout(() => { if (newBio) { heroBio.innerHTML = newBio; heroBio.classList.remove('hidden'); setTimeout(() => heroBio.classList.remove('opacity-0'), 50); } else { heroBio.classList.add('hidden'); } }, 300); }
-          if(newImage) window.updateHeroImage(newImage);
-          
-        } else {
-          window.history.replaceState(null, '', window.location.pathname);
-          
-          if(pcFooter) { pcFooter.classList.add('hidden'); pcFooter.classList.remove('lg:flex'); }
-          if(spModelNav) { spModelNav.classList.add('translate-y-full'); setTimeout(() => spModelNav.classList.add('hidden'), 300); }
-          if(heroExpandHint) { heroExpandHint.classList.add('opacity-0'); setTimeout(() => heroExpandHint.classList.add('hidden'), 300); }
-          if(pcSidebar) { pcSidebar.classList.add('hidden'); pcSidebar.classList.remove('flex', 'flex-col', 'h-full', 'h-[calc(100%-90px)]'); }
-          if(rightPanel) rightPanel.classList.remove('lg:pr-[100px]');
-          
-          window.toggleHeroMode('slider');
-          if(heroPrompt) { heroPrompt.classList.add('opacity-0'); setTimeout(() => heroPrompt.classList.add('hidden'), 300); }
-          if(heroTitle) { heroTitle.classList.add('opacity-0'); setTimeout(() => { 
-            heroTitle.innerHTML = window.appState.defaultSiteTitle || "Miu's Gallery"; 
-            heroTitle.classList.remove('opacity-0'); 
-          }, 300); }
-          if(heroBio) { heroBio.classList.add('opacity-0'); setTimeout(() => heroBio.classList.add('hidden'), 300); }
-        }
-      };
+        // コメント返信状態
+        let activeReplyId = 0;
 
-      window.showSidebarTooltip = (el) => {
-        const tooltip = document.getElementById('global-sidebar-tooltip');
-        if(!tooltip) return;
-        const rect = el.getBoundingClientRect();
-        const color = el.getAttribute('data-color') || '#F43F5E';
-        const textColor = el.getAttribute('data-text-color') || '#FFFFFF';
-        
-        tooltip.textContent = el.getAttribute('data-title');
-        tooltip.style.backgroundColor = color;
-        tooltip.style.color = textColor;
-        tooltip.style.textShadow = textColor === '#FFFFFF' ? '0 1px 2px rgba(0,0,0,0.8)' : 'none';
-        
-        tooltip.style.top = (rect.top + rect.height / 2) + 'px';
-        tooltip.style.right = (window.innerWidth - rect.left + 16) + 'px';
-        tooltip.classList.remove('opacity-0');
-      };
+        // --- DOM Elements ---
+        const stageImg = document.getElementById('main-stage-img');
+        const stageBlurImg = document.getElementById('stage-blur-img');
+        const stageTitle = document.getElementById('stage-char-name');
+        const stageDots = document.getElementById('stage-slider-dots');
+        const floatingDock = document.getElementById('character-floating-dock');
+        const dockInner = document.getElementById('dock-inner');
+        const sidePanel = document.getElementById('side-content-panel');
 
-      window.hideSidebarTooltip = () => {
-        const tooltip = document.getElementById('global-sidebar-tooltip');
-        if(!tooltip) return;
-        tooltip.classList.add('opacity-0');
-      };
+        const viewChars = document.getElementById('view-characters');
+        const viewWorks = document.getElementById('view-works');
+        const viewPhotos = document.getElementById('view-photos');
 
-      const showPwaPrompt = () => {
-        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
-        const isClosed = localStorage.getItem('miu_pwa_prompt_closed');
-        if (isStandalone || isClosed) return;
+        const cinematicModal = document.getElementById('cinematic-modal');
+        const modalImg = document.getElementById('modal-img');
+        const modalTitle = document.getElementById('modal-photo-title');
+        const modalModel = document.getElementById('modal-photo-model');
+        const modalBadge = document.getElementById('modal-cat-badge');
+        const imageHolder = document.getElementById('modal-image-holder');
+        const modalSwipeHint = document.getElementById('modal-swipe-hint');
 
-        const promptEl = document.getElementById('pwa-install-prompt');
-        const iosInstructions = document.getElementById('pwa-ios-instructions');
-        const installBtn = document.getElementById('pwa-install-btn');
+        const commentModal = document.getElementById('comment-modal');
+        const commentModalContent = document.getElementById('comment-modal-content');
+        const commentList = document.getElementById('comment-list');
+        const commentAuthorInput = document.getElementById('comment-author');
+        const commentContentInput = document.getElementById('comment-content');
+        const commentSubmitBtn = document.getElementById('comment-submit-btn');
 
-        if (!promptEl) return;
+        const infoModal = document.getElementById('info-modal');
 
-        const userAgent = window.navigator.userAgent.toLowerCase();
-        const isIOS = /iphone|ipad|ipod/.test(userAgent);
-
-        if (isIOS) {
-          if(iosInstructions) iosInstructions.classList.remove('hidden');
-          promptEl.classList.remove('translate-y-[150%]');
-        } else if (window.appState.deferredPrompt) {
-          if(installBtn) installBtn.classList.remove('hidden');
-          promptEl.classList.remove('translate-y-[150%]');
-        }
-      };
-
-      window.addEventListener('beforeinstallprompt', (e) => {
-        e.preventDefault();
-        window.appState.deferredPrompt = e;
-        setTimeout(showPwaPrompt, 3000);
-      });
-
-      document.addEventListener('astro:page-load', () => {
-        
-        const userAgent = window.navigator.userAgent.toLowerCase();
-        const isIOS = /iphone|ipad|ipod/.test(userAgent);
-        if(isIOS) {
-          setTimeout(showPwaPrompt, 3000);
+        // ============================================================
+        // 1. DYNAMIC COLOR MORPHING
+        // ============================================================
+        function morphColor(hex, rgb) {
+          const root = document.documentElement;
+          root.style.setProperty('--char-accent', hex);
+          root.style.setProperty('--char-rgb', rgb);
+          root.style.setProperty('--char-glow', `rgba(${rgb}, 0.35)`);
         }
 
-        const pwaCloseBtn = document.getElementById('pwa-close-btn');
-        if (pwaCloseBtn) {
-          pwaCloseBtn.addEventListener('click', () => {
-            const promptEl = document.getElementById('pwa-install-prompt');
-            if (promptEl) promptEl.classList.add('translate-y-[150%]');
-            localStorage.setItem('miu_pwa_prompt_closed', 'true');
+        // ============================================================
+        // 2. HERO SLIDER
+        // ============================================================
+        function startHeroSlider() {
+          isHeroSliderActive = true;
+          document.body.classList.remove('is-subpage', 'is-photos-view');
+          if (stageDots) stageDots.classList.add('active');
+          if (floatingDock) floatingDock.classList.remove('visible');
+          if (sidePanel) sidePanel.classList.remove('has-floating-dock');
+
+          if (heroSliderTimer) clearInterval(heroSliderTimer);
+          updateHeroSlide(heroCurrentIndex);
+
+          if (slides.length > 1) {
+            heroSliderTimer = setInterval(() => {
+              if (!isHeroSliderActive) return;
+              heroCurrentIndex = (heroCurrentIndex + 1) % slides.length;
+              updateHeroSlide(heroCurrentIndex);
+            }, 4500);
+          }
+        }
+
+        function stopHeroSlider() {
+          isHeroSliderActive = false;
+          if (heroSliderTimer) clearInterval(heroSliderTimer);
+          if (stageDots) stageDots.classList.remove('active');
+        }
+
+        function updateHeroSlide(index) {
+          const slide = slides[index];
+          if (!slide) return;
+          if (stageImg) stageImg.src = slide.image;
+          if (stageBlurImg) stageBlurImg.src = slide.image;
+          if (stageTitle) stageTitle.textContent = slide.title || "Miu's Gallery";
+          morphColor(slide.color, slide.rgb);
+
+          // Update dots
+          const dots = document.querySelectorAll('.slider-dot');
+          dots.forEach((dot, idx) => {
+            if (idx === index) dot.classList.add('active');
+            else dot.classList.remove('active');
           });
         }
 
-        const pwaInstallBtn = document.getElementById('pwa-install-btn');
-        if (pwaInstallBtn) {
-          pwaInstallBtn.addEventListener('click', async () => {
-            const promptEl = document.getElementById('pwa-install-prompt');
-            if (window.appState.deferredPrompt) {
-              window.appState.deferredPrompt.prompt();
-              const { outcome } = await window.appState.deferredPrompt.userChoice;
-              if (outcome === 'accepted') {
-                if (promptEl) promptEl.classList.add('translate-y-[150%]');
-              }
-              window.appState.deferredPrompt = null;
-            }
-          });
-        }
-        
-        if (window.appState.heroSlider) {
-          window.appState.heroSlider.destroy();
-          window.appState.heroSlider = null;
-        }
-        if (window.Splide && document.getElementById('hero-slider')) {
-          window.appState.heroSlider = new window.Splide('#hero-slider', {
-            type: 'loop', drag: true, arrows: false, pagination: true, autoplay: true, interval: 5000, pauseOnHover: true, speed: 1600, easing: 'cubic-bezier(0.25, 1, 0.5, 1)',
-          }).mount();
-        }
-
-        const heroTitleEl = document.getElementById('hero-title');
-        if (heroTitleEl && !window.appState.defaultSiteTitle) {
-          window.appState.defaultSiteTitle = heroTitleEl.innerHTML;
-        }
-
-        const triggers = document.querySelectorAll('.js-nav-trigger');
-        const backBtns = document.querySelectorAll('.js-back-btn');
-        const pcSidebar = document.getElementById('pc-sidebar');
-
-        if (pcSidebar) {
-          pcSidebar.addEventListener('scroll', window.hideSidebarTooltip, { passive: true });
-        }
-
-        if (!window.appState.isEventsBound) {
-          document.addEventListener('keydown', (e) => {
-            const lightbox = document.getElementById('lightbox');
-            if (lightbox && lightbox.open) {
-              if (e.key === 'ArrowRight') window.nextLightboxImage();
-              else if (e.key === 'ArrowLeft') window.prevLightboxImage();
-              else if (e.key === 'Escape') window.closeLightbox();
+        // ============================================================
+        // 3. 3-TIER NAVIGATION & RENDERING
+        // ============================================================
+        function switchPanelView(viewId) {
+          [viewChars, viewWorks, viewPhotos].forEach(view => {
+            if (!view) return;
+            if (view.id === viewId) {
+              view.classList.add('active');
+              view.scrollTop = 0;
+            } else {
+              view.classList.remove('active');
             }
           });
 
-          const cursor = document.getElementById('custom-cursor');
-          const cursorText = document.getElementById('cursor-text');
-          
-          if (window.matchMedia("(pointer: fine)").matches) {
-            document.addEventListener('mousemove', (e) => {
-              if(!cursor) return;
-              cursor.style.left = e.clientX + 'px';
-              cursor.style.top = e.clientY + 'px';
-            });
-            
-            document.addEventListener('mouseover', (e) => {
-              if(!cursor || !cursorText) return;
-              if(e.target.closest('button, a, input, .js-nav-trigger, .js-work-item, .js-variation-img')) {
-                 cursor.classList.add('is-hover');
-                 cursorText.textContent = '';
-              } else if (e.target.closest('#hero-slider-wrapper, #hero-static-wrapper, #lightbox-container')) {
-                 cursor.classList.add('is-view');
-                 cursorText.textContent = 'VIEW';
-              }
-            });
+          const isSubpage = (viewId === 'view-works' || viewId === 'view-photos');
+          const isPhotosView = (viewId === 'view-photos');
 
-            document.addEventListener('mouseout', (e) => {
-              if(!cursor || !cursorText) return;
-              if(e.target.closest('button, a, input, .js-nav-trigger, .js-work-item, .js-variation-img')) {
-                 cursor.classList.remove('is-hover');
-              } else if (e.target.closest('#hero-slider-wrapper, #hero-static-wrapper, #lightbox-container')) {
-                 cursor.classList.remove('is-view');
-                 cursorText.textContent = '';
-              }
-            });
-          }
-          window.appState.isEventsBound = true;
+          document.body.classList.toggle('is-subpage', isSubpage);
+          document.body.classList.toggle('is-photos-view', isPhotosView);
+
+          if (floatingDock) floatingDock.classList.toggle('visible', isSubpage);
+          if (sidePanel) sidePanel.classList.toggle('has-floating-dock', isSubpage);
         }
 
-        const initDeepLink = () => {
-          const hash = window.location.hash;
-          if (hash.startsWith('#work-')) {
-            const dbId = hash.replace('#work-', '');
-            const targetBtn = document.querySelector(`.js-work-item[data-database-id="${dbId}"]`);
-            if (targetBtn) setTimeout(() => targetBtn.click(), 100);
-          }
-        };
-        initDeepLink();
+        // TIER 1: CHARACTERS VIEW
+        function renderCharactersView() {
+          const container = document.getElementById('characters-grid-list');
+          if (!container) return;
 
-        window.isPostLiked = (id) => {
-          if(!id) return false;
+          container.innerHTML = characters.map(c => `
+            <button class="char-select-card" data-char-id="${c.id}" aria-label="${c.name} の作品アルバムを見る">
+              <div class="char-card-media">
+                <img src="${c.avatar}" alt="${c.name}" loading="lazy">
+                <div class="char-card-color-overlay" style="background-color: ${c.color};"></div>
+              </div>
+              <div class="char-card-caption">
+                <div class="char-card-name">${c.name}</div>
+                <div class="char-card-works-count">${c.works.length} Works</div>
+              </div>
+            </button>
+          `).join('');
+
+          container.querySelectorAll('.char-select-card').forEach(card => {
+            card.addEventListener('click', () => {
+              const cid = card.getAttribute('data-char-id');
+              showWorksView(cid);
+            });
+          });
+        }
+
+        function showCharactersView() {
+          switchPanelView('view-characters');
+          startHeroSlider();
+        }
+
+        // TIER 2: WORKS VIEW OF SELECTED MODEL
+        function showWorksView(modelId) {
+          stopHeroSlider();
+          currentModelId = modelId;
+          const model = characters.find(c => c.id === modelId) || characters[0];
+          if (!model) return;
+
+          morphColor(model.color, model.rgb);
+          switchPanelView('view-works');
+          updateFloatingDockActive(modelId);
+
+          // Header summary
+          const avatar = document.getElementById('active-model-avatar');
+          const name = document.getElementById('active-model-name');
+          const count = document.getElementById('active-model-works-count');
+          const bio = document.getElementById('active-model-bio');
+          if (avatar) avatar.src = model.avatar;
+          if (name) name.textContent = model.name;
+          if (count) count.textContent = `${model.works.length} Works`;
+          if (bio) {
+            if (model.bio) {
+              bio.innerHTML = model.bio;
+              bio.classList.remove('hidden');
+            } else {
+              bio.classList.add('hidden');
+            }
+          }
+
+          // Main stage display: Model's first artwork cover
+          const firstWork = model.works[0];
+          const displayImg = firstWork ? firstWork.coverImage : model.avatar;
+          if (stageImg) stageImg.src = displayImg;
+          if (stageBlurImg) stageBlurImg.src = displayImg;
+          if (stageTitle) stageTitle.textContent = model.name;
+
+          // Render Works List (Matches style.css .work-album-card)
+          const worksContainer = document.getElementById('works-albums-list');
+          if (worksContainer) {
+            worksContainer.innerHTML = model.works.map(w => `
+              <button class="work-album-card" data-work-id="${w.id}" aria-label="${w.title} の写真を閲覧">
+                <div class="work-album-cover">
+                  <img src="${w.coverImage}" alt="${w.title}" loading="lazy">
+                </div>
+                <div class="work-album-info">
+                  <h4 class="work-album-title">${w.title}</h4>
+                  <div class="work-album-meta">
+                    <span class="work-photos-badge">${w.photos.length} Photos</span>
+                  </div>
+                </div>
+              </button>
+            `).join('');
+
+            worksContainer.querySelectorAll('.work-album-card').forEach(card => {
+              card.addEventListener('click', () => {
+                const wid = card.getAttribute('data-work-id');
+                showPhotosView(wid);
+              });
+            });
+          }
+        }
+
+        // TIER 3: PHOTOS IN SELECTED WORK
+        function showPhotosView(workId) {
+          stopHeroSlider();
+          const model = characters.find(c => c.id === currentModelId) || characters[0];
+          const work = model?.works.find(w => w.id === workId) || model?.works[0];
+          if (!work) return;
+
+          currentWork = work;
+          currentPhotosInWork = work.photos || [];
+          currentPhotoIndex = 0;
+
+          switchPanelView('view-photos');
+          updateFloatingDockActive(currentModelId);
+
+          // Work header card
+          const title = document.getElementById('active-work-title');
+          const count = document.getElementById('active-work-photos-count');
+          const backLabel = document.getElementById('btn-back-works-label');
+          if (title) title.textContent = work.title;
+          if (count) count.textContent = `${currentPhotosInWork.length} Photos`;
+          if (backLabel) backLabel.textContent = `${model.name.split(' ')[0]} WORKS`;
+
+          // Like & Comments state
+          updateWorkStatsUI();
+          fetchLiveStats(work.databaseId);
+
+          // Main stage photo
+          updateStagePhoto(0);
+
+          // Render photos thumbnails grid (Matches style.css .photo-thumb-btn)
+          const grid = document.getElementById('photos-thumbnails-grid');
+          if (grid) {
+            grid.innerHTML = currentPhotosInWork.map((p, idx) => `
+              <button class="photo-thumb-btn ${idx === 0 ? 'active' : ''}" data-index="${idx}" aria-label="${p.title}">
+                <img src="${p.image}" alt="${p.title}" loading="lazy">
+                <div class="photo-thumb-caption">${p.title}</div>
+              </button>
+            `).join('');
+
+            grid.querySelectorAll('.photo-thumb-btn').forEach(btn => {
+              btn.addEventListener('click', () => {
+                const idx = parseInt(btn.getAttribute('data-index'), 10);
+                currentPhotoIndex = idx;
+                updateStagePhoto(idx);
+              });
+            });
+          }
+        }
+
+        function updateStagePhoto(index) {
+          const photo = currentPhotosInWork[index];
+          if (!photo) return;
+
+          currentPhotoIndex = index;
+          if (stageImg) stageImg.src = photo.image;
+          if (stageBlurImg) stageBlurImg.src = photo.image;
+          if (stageTitle) stageTitle.textContent = photo.workTitle || photo.title;
+
+          // Highlight thumb
+          document.querySelectorAll('.photo-thumb-btn').forEach((btn, idx) => {
+            btn.classList.toggle('active', idx === index);
+          });
+        }
+
+        // ============================================================
+        // 4. FLOATING QUICK-SWITCHER DOCK
+        // ============================================================
+        function initFloatingDock() {
+          if (!dockInner) return;
+          dockInner.innerHTML = characters.map(c => `
+            <button class="dock-item-btn ${c.id === currentModelId ? 'active' : ''}" data-char-id="${c.id}" aria-label="${c.name} の作品へ切り替え">
+              <img src="${c.avatar}" alt="${c.name}" class="dock-avatar-img">
+              <div class="dock-active-indicator" style="background: ${c.color};"></div>
+              <div class="dock-tooltip">
+                <span class="dock-tooltip-dot" style="background: ${c.color};"></span>
+                <span>${c.name}</span>
+              </div>
+            </button>
+          `).join('');
+
+          dockInner.querySelectorAll('.dock-item-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+              const cid = btn.getAttribute('data-char-id');
+              showWorksView(cid);
+            });
+          });
+        }
+
+        function updateFloatingDockActive(modelId) {
+          document.querySelectorAll('.dock-item-btn').forEach(btn => {
+            const isActive = btn.getAttribute('data-char-id') === modelId;
+            btn.classList.toggle('active', isActive);
+          });
+        }
+
+        // ============================================================
+        // 5. CINEMATIC FULLSCREEN LIGHTBOX MODAL
+        // ============================================================
+        function openModal(photoId) {
+          modalFilteredList = currentPhotosInWork.length > 0 ? currentPhotosInWork : currentAllPhotosFlat;
+          const foundIdx = modalFilteredList.findIndex(p => p.id === photoId);
+          modalCurrentIndex = foundIdx !== -1 ? foundIdx : 0;
+
+          resetZoom();
+          renderModalContent();
+          cinematicModal?.showModal();
+
+          if (!localStorage.getItem('miu_swipe_hint_seen')) {
+            if (modalSwipeHint) modalSwipeHint.style.display = 'flex';
+          }
+        }
+
+        function closeModal() {
+          resetZoom();
+          if (modalSwipeHint) modalSwipeHint.style.display = 'none';
+          cinematicModal?.close();
+        }
+
+        function modalNext() {
+          resetZoom();
+          modalCurrentIndex = (modalCurrentIndex + 1) % modalFilteredList.length;
+          renderModalContent();
+        }
+
+        function modalPrev() {
+          resetZoom();
+          modalCurrentIndex = (modalCurrentIndex - 1 + modalFilteredList.length) % modalFilteredList.length;
+          renderModalContent();
+        }
+
+        function renderModalContent() {
+          const photo = modalFilteredList[modalCurrentIndex];
+          if (!photo) return;
+
+          if (modalImg) {
+            modalImg.style.opacity = '0';
+            modalImg.style.transform = 'scale(0.96)';
+            setTimeout(() => {
+              modalImg.src = photo.image;
+              modalImg.onload = () => {
+                modalImg.style.opacity = '1';
+                modalImg.style.transform = 'scale(1)';
+              };
+            }, 100);
+          }
+
+          if (modalTitle) modalTitle.textContent = photo.workTitle || photo.title;
+          if (modalModel) modalModel.textContent = photo.modelName || '';
+          if (modalBadge) modalBadge.textContent = `#${modalCurrentIndex + 1} / ${modalFilteredList.length}`;
+
+          updateModalLikeButton();
+        }
+
+        function resetZoom() {
+          currentScale = 1;
+          currentPanX = 0;
+          currentPanY = 0;
+          if (imageHolder) {
+            imageHolder.style.transform = 'translate3d(0, 0, 0) scale(1)';
+          }
+        }
+
+        // Modal Gestures (Pinch zoom, double tap, swipe)
+        function initModalGestures() {
+          const stage = document.getElementById('modal-main-stage');
+          if (!stage) return;
+
+          stage.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 2) {
+              isPinching = true;
+              isPanning = false;
+              startPinchDist = Math.hypot(
+                e.touches[0].clientX - e.touches[1].clientX,
+                e.touches[0].clientY - e.touches[1].clientY
+              );
+              startScale = currentScale;
+            } else if (e.touches.length === 1) {
+              isPinching = false;
+              touchStartX = e.touches[0].clientX;
+              touchStartY = e.touches[0].clientY;
+              startPanX = currentPanX;
+              startPanY = currentPanY;
+              if (currentScale > 1.05) isPanning = true;
+
+              // Double tap check
+              const now = Date.now();
+              if (now - lastTapTime < 300) {
+                if (currentScale > 1.1) {
+                  resetZoom();
+                } else {
+                  currentScale = 2.4;
+                  if (imageHolder) imageHolder.style.transform = `translate3d(0, 0, 0) scale(${currentScale})`;
+                }
+                triggerLikeAnimation(e);
+              }
+              lastTapTime = now;
+            }
+          }, { passive: true });
+
+          stage.addEventListener('touchmove', (e) => {
+            if (isPinching && e.touches.length === 2) {
+              const dist = Math.hypot(
+                e.touches[0].clientX - e.touches[1].clientX,
+                e.touches[0].clientY - e.touches[1].clientY
+              );
+              currentScale = Math.min(Math.max(startScale * (dist / startPinchDist), 0.9), 4.5);
+              if (imageHolder) imageHolder.style.transform = `translate3d(${currentPanX}px, ${currentPanY}px, 0) scale(${currentScale})`;
+            } else if (isPanning && e.touches.length === 1) {
+              const deltaX = e.touches[0].clientX - touchStartX;
+              const deltaY = e.touches[0].clientY - touchStartY;
+              currentPanX = startPanX + deltaX;
+              currentPanY = startPanY + deltaY;
+              if (imageHolder) imageHolder.style.transform = `translate3d(${currentPanX}px, ${currentPanY}px, 0) scale(${currentScale})`;
+            }
+          }, { passive: true });
+
+          stage.addEventListener('touchend', (e) => {
+            if (isPinching && e.touches.length < 2) isPinching = false;
+            if (isPanning && e.touches.length === 0) isPanning = false;
+
+            if (currentScale < 1.05) {
+              resetZoom();
+              // Swipe navigation
+              if (e.changedTouches.length > 0) {
+                const deltaX = e.changedTouches[0].clientX - touchStartX;
+                const deltaY = e.changedTouches[0].clientY - touchStartY;
+                if (Math.abs(deltaX) > 45 && Math.abs(deltaX) > Math.abs(deltaY) * 1.4) {
+                  if (deltaX < 0) modalNext();
+                  else modalPrev();
+                }
+              }
+            }
+          }, { passive: true });
+
+          modalSwipeHint?.addEventListener('click', () => {
+            modalSwipeHint.style.display = 'none';
+            localStorage.setItem('miu_swipe_hint_seen', 'true');
+          });
+        }
+
+        // ============================================================
+        // 6. LIKES & COMMENTS (PRESERVE EXACT LOGIC)
+        // ============================================================
+        function isPostLiked(dbId) {
+          if (!dbId) return false;
           const liked = JSON.parse(localStorage.getItem('miu_liked_posts') || '[]');
-          return liked.includes(id.toString());
-        };
-        window.markPostAsLiked = (id) => {
-          if(!id) return;
+          return liked.includes(dbId.toString());
+        }
+
+        function markPostAsLiked(dbId) {
+          if (!dbId) return;
           const liked = JSON.parse(localStorage.getItem('miu_liked_posts') || '[]');
-          if(!liked.includes(id.toString())) {
-            liked.push(id.toString());
+          if (!liked.includes(dbId.toString())) {
+            liked.push(dbId.toString());
             localStorage.setItem('miu_liked_posts', JSON.stringify(liked));
           }
-        };
+        }
 
-        window.updateStatsUI = () => {
-          const state = window.appState.currentModelData;
-          ['like-counter', 'like-counter-sp'].forEach(id => {
-            const el = document.getElementById(id);
-            if(el) el.textContent = state.likes.toLocaleString();
-          });
+        function triggerLikeAnimation(e) {
+          if (!currentWork || !currentWork.databaseId) return;
+          const dbId = currentWork.databaseId;
+          if (isPostLiked(dbId)) return;
 
-          const isLiked = window.isPostLiked(state.databaseId);
-          ['btn-like-icon', 'btn-like-icon-sp'].forEach(id => {
-            const icon = document.getElementById(id);
-            if(icon) {
-              if(isLiked) icon.classList.add(`text-[${state.color}]`, 'fill-current');
-              else icon.classList.remove(`text-[${state.color}]`, 'fill-current');
-            }
-          });
-          window.renderComments();
-        };
+          markPostAsLiked(dbId);
+          currentWork.likeCount++;
+          updateWorkStatsUI();
 
-        window.fetchLiveStats = (postId) => {
-          if(!window.WP_GRAPHQL_URL || !postId) return;
+          // Heart burst animation
+          const heart = document.createElement('div');
+          heart.className = 'fixed pointer-events-none z-[99999] transform -translate-x-1/2 -translate-y-1/2 animate-heart-burst';
+          heart.innerHTML = `<svg viewBox="0 0 24 24" class="w-28 h-28 fill-current text-rose-500 drop-shadow-[0_0_30px_rgba(244,63,94,0.8)]"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>`;
+          heart.style.left = (e?.clientX || window.innerWidth / 2) + 'px';
+          heart.style.top = (e?.clientY || window.innerHeight / 2) + 'px';
+          document.body.appendChild(heart);
+          setTimeout(() => heart.remove(), 1000);
+
+          if (window.WP_GRAPHQL_URL) {
+            fetch(window.WP_GRAPHQL_URL, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                query: `mutation IncrementLike($postId: Int!) { incrementLike(input: {postId: $postId}) { newCount } }`,
+                variables: { postId: parseInt(dbId) }
+              })
+            }).catch(err => console.error('Like request failed', err));
+          }
+        }
+
+        function updateWorkStatsUI() {
+          if (!currentWork) return;
+          const likeCountEl = document.getElementById('work-like-count');
+          const commentCountEl = document.getElementById('work-comment-count');
+          const workLikeBtn = document.getElementById('work-like-btn');
+          const isLiked = isPostLiked(currentWork.databaseId);
+
+          if (likeCountEl) likeCountEl.textContent = (currentWork.likeCount || 0).toLocaleString();
+          if (commentCountEl) commentCountEl.textContent = (currentWork.guestComments?.length || 0).toString();
+          if (workLikeBtn) {
+            if (isLiked) workLikeBtn.classList.add('is-liked');
+            else workLikeBtn.classList.remove('is-liked');
+          }
+          updateModalLikeButton();
+        }
+
+        function updateModalLikeButton() {
+          const modalLikeBtn = document.getElementById('modal-like-btn');
+          if (!modalLikeBtn || !currentWork) return;
+          const isLiked = isPostLiked(currentWork.databaseId);
+          if (isLiked) {
+            modalLikeBtn.classList.add('text-rose-500', 'fill-current');
+            modalLikeBtn.style.color = 'var(--char-accent)';
+          } else {
+            modalLikeBtn.classList.remove('text-rose-500', 'fill-current');
+            modalLikeBtn.style.color = '';
+          }
+        }
+
+        function fetchLiveStats(postId) {
+          if (!window.WP_GRAPHQL_URL || !postId) return;
           fetch(window.WP_GRAPHQL_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -912,490 +1153,335 @@ const schemaLD = {
           .then(res => res.json())
           .then(res => {
             const stats = res?.data?.liveArtworkStats;
-            if(stats && window.appState.currentModelData.databaseId == postId) {
-              window.appState.currentModelData.likes = stats.likeCount || 0;
-              window.appState.currentModelData.comments = stats.guestComments || [];
-              window.updateStatsUI();
+            if (stats && currentWork && currentWork.databaseId == postId) {
+              currentWork.likeCount = stats.likeCount || 0;
+              currentWork.guestComments = stats.guestComments || [];
+              updateWorkStatsUI();
+              renderComments();
             }
           })
           .catch(err => console.error(err));
-        };
+        }
 
-        window.setReplyTo = (parentId, authorName) => {
-          window.appState.activeReplyId = parentId;
-          const indicator = document.getElementById('reply-indicator');
-          const nameSpan = document.getElementById('reply-indicator-name');
-          if (indicator && nameSpan) {
-            nameSpan.textContent = authorName || '名無し';
-            indicator.classList.remove('hidden');
-            indicator.classList.add('flex');
+        function renderComments() {
+          if (!commentList || !currentWork) return;
+          const comments = currentWork.guestComments || [];
+          const modalCount = document.getElementById('modal-comment-count');
+          if (modalCount) modalCount.textContent = comments.length;
+
+          if (comments.length === 0) {
+            commentList.innerHTML = '<p class="text-gray-500 font-light text-center py-10">まだコメントはありません。<br/>最初のコメントを投稿しよう！</p>';
+            return;
           }
-          document.getElementById('comment-content')?.focus();
-        };
 
-        window.cancelReply = () => {
-          window.appState.activeReplyId = 0;
+          const topComments = comments.filter(c => !c.parentId || c.parentId === 0);
+          commentList.innerHTML = topComments.map(c => {
+            const replies = comments.filter(r => r.parentId === c.id);
+            return `
+              <div class="bg-white/5 border border-white/5 rounded-2xl p-3 text-xs">
+                <div class="flex items-baseline justify-between mb-1.5">
+                  <span class="text-white font-medium">${c.author || '名無しさん'}</span>
+                  <span class="text-gray-500 text-[10px]">${c.date ? new Date(c.date).toLocaleDateString() : 'Just now'}</span>
+                </div>
+                <p class="text-gray-300 font-light leading-relaxed mb-2">${c.content}</p>
+                <button class="btn-reply text-[10px] text-gray-500 hover:text-rose-400 flex items-center gap-1 outline-none" data-reply-id="${c.id}" data-reply-author="${c.author || '名無しさん'}">
+                  <span>↩ 返信する</span>
+                </button>
+                ${replies.length > 0 ? `
+                  <div class="space-y-2 mt-2 ml-4 border-l-2 border-rose-500/40 pl-2">
+                    ${replies.map(r => `
+                      <div class="bg-white/5 rounded-xl p-2">
+                        <div class="flex items-baseline justify-between mb-1">
+                          <span class="text-white font-medium text-[11px]">${r.author || '名無しさん'}</span>
+                          <span class="text-gray-500 text-[9px]">${r.date ? new Date(r.date).toLocaleDateString() : 'Just now'}</span>
+                        </div>
+                        <p class="text-gray-300 font-light leading-relaxed">${r.content}</p>
+                      </div>
+                    `).join('')}
+                  </div>
+                ` : ''}
+              </div>
+            `;
+          }).join('');
+
+          commentList.querySelectorAll('.btn-reply').forEach(btn => {
+            btn.addEventListener('click', () => {
+              activeReplyId = parseInt(btn.getAttribute('data-reply-id'));
+              const name = btn.getAttribute('data-reply-author');
+              const indicator = document.getElementById('reply-indicator');
+              const nameSpan = document.getElementById('reply-indicator-name');
+              if (indicator && nameSpan) {
+                nameSpan.textContent = name;
+                indicator.classList.remove('hidden');
+                indicator.classList.add('flex');
+              }
+              commentContentInput?.focus();
+            });
+          });
+        }
+
+        function cancelReply() {
+          activeReplyId = 0;
           const indicator = document.getElementById('reply-indicator');
           if (indicator) {
             indicator.classList.add('hidden');
             indicator.classList.remove('flex');
           }
-        };
+        }
 
-        const buildCommentHtml = (c, isReply = false) => `
-          <div class="bg-white/5 border border-white/5 rounded-2xl p-4 ${isReply ? `ml-6 mt-2 border-l-2 border-l-[${window.appState.currentModelData.color}]/50` : ''}">
-            <div class="flex items-baseline justify-between mb-2">
-              <span class="text-white font-medium">${c.author || '名無しさん'}</span>
-              <span class="text-gray-500 text-xs">${c.date ? new Date(c.date).toLocaleDateString() : 'Just now'}</span>
-            </div>
-            <p class="text-gray-300 font-light leading-relaxed mb-3">${c.content}</p>
-            ${!isReply ? `<button onclick="window.setReplyTo(${c.id}, '${c.author || '名無しさん'}')" class="text-xs text-gray-500 hover:text-[${window.appState.currentModelData.color}] transition-colors outline-none flex items-center gap-1"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path></svg> 返信する</button>` : ''}
-          </div>
-        `;
+        function openCommentModal() {
+          renderComments();
+          if (commentModal && commentModalContent) {
+            commentModal.showModal();
+            setTimeout(() => {
+              commentModalContent.style.transform = 'scale(1)';
+              commentModalContent.style.opacity = '1';
+            }, 10);
+            commentModal.onclick = (e) => {
+              if (e.target === commentModal) closeCommentModal();
+            };
+          }
+        }
 
-        window.renderComments = () => {
-          const list = document.getElementById('comment-list');
-          if (!list) return;
-          
-          const comments = window.appState.currentModelData.comments;
-          if (comments.length === 0) {
-            list.innerHTML = '<p class="text-gray-500 font-light text-center py-10 mt-10">まだコメントはありません。<br/>最初のコメントを投稿しよう！</p>';
-          } else {
-            const topComments = comments.filter(c => !c.parentId || c.parentId === 0);
-            list.innerHTML = `<div class="space-y-4 pb-4">` + topComments.map(c => {
-              const replies = comments.filter(r => r.parentId === c.id);
-              let html = buildCommentHtml(c, false);
-              if (replies.length > 0) {
-                html += `<div class="space-y-2 mt-2">` + replies.map(r => buildCommentHtml(r, true)).join('') + `</div>`;
-              }
-              return html;
-            }).join('') + `</div>`;
+        function closeCommentModal() {
+          if (commentModal && commentModalContent) {
+            commentModalContent.style.transform = 'scale(0.95)';
+            commentModalContent.style.opacity = '0';
+            setTimeout(() => {
+              commentModal.close();
+              cancelReply();
+            }, 250);
+          }
+        }
+
+        function submitComment() {
+          if (!currentWork || !currentWork.databaseId) {
+            alert("エラー：作品が選択されていません。");
+            return;
+          }
+          const author = (commentAuthorInput?.value || '').trim() || '名無しさん';
+          const content = (commentContentInput?.value || '').trim();
+
+          if (!content) {
+            alert("コメントを入力してください！");
+            return;
           }
 
-          document.querySelectorAll('.comment-badge-count').forEach(el => el.textContent = comments.length);
-          const modalCount = document.getElementById('modal-comment-count');
-          if(modalCount) modalCount.textContent = comments.length;
-        };
+          if (commentSubmitBtn) {
+            commentSubmitBtn.disabled = true;
+            commentSubmitBtn.textContent = '送信中...';
+          }
 
-        window.submitComment = () => {
-          const authorInput = document.getElementById('comment-author');
-          const contentInput = document.getElementById('comment-content');
-          const submitBtn = document.getElementById('comment-submit-btn');
-          
-          const author = authorInput.value.trim() || '名無しさん';
-          const content = contentInput.value.trim();
-          
-          if (!content) { alert("コメントが入力されていません！"); return; }
-          if (!window.appState.currentModelData.databaseId) { alert("エラー：作品のデータが取得できません。"); return; }
-
-          submitBtn.disabled = true;
-          submitBtn.textContent = '送信中...';
-
-          if(window.WP_GRAPHQL_URL) {
+          if (window.WP_GRAPHQL_URL) {
             fetch(window.WP_GRAPHQL_URL, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 query: `mutation SubmitComment($postId: Int!, $author: String!, $content: String!, $parentId: Int) { submitGuestComment(input: {postId: $postId, author: $author, content: $content, parentId: $parentId}) { success message } }`,
-                variables: { 
-                  postId: parseInt(window.appState.currentModelData.databaseId), 
-                  author, 
+                variables: {
+                  postId: parseInt(currentWork.databaseId),
+                  author,
                   content,
-                  parentId: window.appState.activeReplyId || 0 
+                  parentId: activeReplyId || 0
                 }
               })
             })
             .then(res => res.json())
             .then(data => {
               if (data?.data?.submitGuestComment?.success) {
-                contentInput.value = '';
-                window.cancelReply(); 
-                window.fetchLiveStats(window.appState.currentModelData.databaseId);
-                const list = document.getElementById('comment-list');
-                setTimeout(() => list.scrollTop = list.scrollHeight, 300);
+                if (commentContentInput) commentContentInput.value = '';
+                cancelReply();
+                fetchLiveStats(currentWork.databaseId);
+                setTimeout(() => {
+                  if (commentList) commentList.scrollTop = commentList.scrollHeight;
+                }, 300);
               } else {
                 const errMsg = data?.data?.submitGuestComment?.message || data?.errors?.[0]?.message || 'サーバー側で拒否されました';
                 alert('送信に失敗しました: ' + errMsg);
               }
             })
             .catch(err => {
-              console.error('Comment failed', err);
+              console.error('Comment error:', err);
               alert('通信エラーが発生しました。');
             })
             .finally(() => {
-              submitBtn.disabled = false;
-              submitBtn.textContent = '送信';
+              if (commentSubmitBtn) {
+                commentSubmitBtn.disabled = false;
+                commentSubmitBtn.textContent = '送信';
+              }
             });
           }
-        };
+        }
 
-        window.updateHeroImage = (newSrc) => {
-          const staticImg = document.getElementById('hero-static-img');
-          const staticBg = document.getElementById('hero-static-bg');
-          if (staticImg && staticBg && newSrc && staticImg.src !== newSrc) {
-            staticImg.classList.add('opacity-0'); staticBg.classList.add('opacity-0');
-            setTimeout(() => {
-              const preloader = new Image(); preloader.src = newSrc;
-              preloader.onload = () => {
-                staticImg.src = newSrc; staticBg.src = newSrc;
-                staticImg.classList.remove('opacity-0'); staticBg.classList.remove('opacity-0');
-                staticImg.classList.remove('scale-100'); staticImg.classList.add('scale-105');
-                setTimeout(() => { staticImg.classList.remove('scale-105'); staticImg.classList.add('scale-100'); }, 50);
-              };
-            }, 300);
+        // ============================================================
+        // 7. MOTION & INTERACTION (CURSOR & 3D TILT)
+        // ============================================================
+        function initCursor() {
+          const cursor = document.getElementById('custom-cursor');
+          if (!cursor) return;
+
+          let mouseX = window.innerWidth / 2;
+          let mouseY = window.innerHeight / 2;
+          let cursorX = mouseX;
+          let cursorY = mouseY;
+
+          window.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+          }, { passive: true });
+
+          function animate() {
+            cursorX += (mouseX - cursorX) * 0.25;
+            cursorY += (mouseY - cursorY) * 0.25;
+            cursor.style.transform = `translate3d(${cursorX}px, ${cursorY}px, 0)`;
+            requestAnimationFrame(animate);
           }
-        };
+          requestAnimationFrame(animate);
 
-        window.toggleHeroMode = (mode) => { 
-          const sliderWrapper = document.getElementById('hero-slider-wrapper');
-          const staticWrapper = document.getElementById('hero-static-wrapper');
-          const slider = window.appState.heroSlider;
-          if (mode === 'static') {
-            if (slider && slider.Components.Autoplay) slider.Components.Autoplay.pause();
-            if(sliderWrapper) { sliderWrapper.classList.add('opacity-0'); setTimeout(() => sliderWrapper.classList.add('hidden'), 700); }
-            if(staticWrapper) { staticWrapper.classList.remove('hidden'); setTimeout(() => staticWrapper.classList.remove('opacity-0'), 50); }
-          } else {
-            if (slider && slider.Components.Autoplay) slider.Components.Autoplay.play();
-            if(staticWrapper) { staticWrapper.classList.add('opacity-0'); setTimeout(() => staticWrapper.classList.add('hidden'), 700); }
-            if(sliderWrapper) { sliderWrapper.classList.remove('hidden'); setTimeout(() => sliderWrapper.classList.remove('opacity-0'), 50); }
-          }
-        };
+          document.addEventListener('mouseover', (e) => {
+            const target = e.target.closest('button, a, .char-select-card, .work-album-card, .photo-thumb-btn, .dock-item-btn');
+            if (target) cursor.classList.add('cursor-hover');
+            else cursor.classList.remove('cursor-hover');
+          });
+        }
 
-        window.handleHeroInteraction = (e) => {
-          if (e) e.stopPropagation();
-          const currentTime = new Date().getTime();
-          const tapLength = currentTime - window.appState.lastTapTime;
-          window.appState.lastTapTime = currentTime;
+        function init3DTilt() {
+          const tiltEl = document.getElementById('stage-photo-wrapper');
+          if (!tiltEl) return;
+          const intensity = 6;
 
-          const isTopPage = document.getElementById('view-categories').classList.contains('active');
-          const isDetailPage = document.getElementById('view-detail').classList.contains('active');
-          
-          let currentImgSrc = "";
-          if (isTopPage) {
-            const activeSlideImg = document.querySelector('.splide__slide.is-active .js-main-img');
-            currentImgSrc = activeSlideImg ? activeSlideImg.src : "";
-          } else {
-            const staticImg = document.getElementById('hero-static-img');
-            currentImgSrc = staticImg ? staticImg.src : "";
-          }
+          tiltEl.addEventListener('mousemove', (e) => {
+            const rect = tiltEl.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            const centerX = rect.width / 2;
+            const centerY = rect.height / 2;
+            const rotateX = ((y - centerY) / centerY) * -intensity;
+            const rotateY = ((x - centerX) / centerX) * intensity;
+            tiltEl.style.transform = `perspective(1000px) rotateX(${rotateX.toFixed(1)}deg) rotateY(${rotateY.toFixed(1)}deg) scale3d(1.01, 1.01, 1.01)`;
+          }, { passive: true });
 
-          if (window.appState.clickTimer !== null || (tapLength < 300 && tapLength > 0)) {
-            if(window.appState.clickTimer) clearTimeout(window.appState.clickTimer);
-            window.appState.clickTimer = null;
-            if (isDetailPage) window.triggerLikeAnimation(e);
-            else if (!isDetailPage) window.openLightbox(currentImgSrc, isTopPage ? Array.from(document.querySelectorAll('.splide__slide:not(.splide__slide--clone) .js-main-img')).map(img => img.src) : [currentImgSrc]);
-          } else {
-            window.appState.clickTimer = setTimeout(() => {
-              window.appState.clickTimer = null;
-              let gallery = [currentImgSrc];
-              if (isTopPage) gallery = Array.from(document.querySelectorAll('.splide__slide:not(.splide__slide--clone) .js-main-img')).map(img => img.src);
-              else if (isDetailPage) gallery = window.currentDetailGallery || [currentImgSrc];
-              if (currentImgSrc) window.openLightbox(currentImgSrc, gallery);
-            }, 300);
-          }
-        };
+          tiltEl.addEventListener('mouseleave', () => {
+            tiltEl.style.transform = 'perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)';
+          }, { passive: true });
+        }
 
-        window.triggerLikeAnimation = (e, fromButton = false) => {
-          const state = window.appState.currentModelData;
-          if (!state.databaseId) return;
-          if (window.isPostLiked(state.databaseId)) return;
+        // ============================================================
+        // 8. EVENT BINDINGS & INITIALIZATION
+        // ============================================================
+        function setupEventListeners() {
+          // Home brand click
+          document.getElementById('brand-home-link')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            showCharactersView();
+          });
 
-          window.markPostAsLiked(state.databaseId);
-          state.likes++;
-          window.updateStatsUI();
+          // Back buttons
+          document.getElementById('btn-back-to-characters')?.addEventListener('click', showCharactersView);
+          document.getElementById('btn-back-to-works')?.addEventListener('click', () => showWorksView(currentModelId));
 
-          if (!fromButton) {
-            const heart = document.createElement('div');
-            heart.innerHTML = `<svg viewBox="0 0 24 24" class="w-32 h-32 fill-current" style="color: ${state.color}; filter: drop-shadow(0 0 30px ${state.color});"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>`;
-            heart.className = 'fixed pointer-events-none z-[9999] transform -translate-x-1/2 -translate-y-1/2 animate-heart-burst';
-            heart.style.left = (e.clientX || window.innerWidth/2) + 'px';
-            heart.style.top = (e.clientY || window.innerHeight/2) + 'px';
-            document.body.appendChild(heart);
-            setTimeout(() => heart.remove(), 1000);
-          }
+          // Main stage photo click -> Lightbox Modal
+          document.getElementById('stage-photo-wrapper')?.addEventListener('click', (e) => {
+            if (isHeroSliderActive || !document.body.classList.contains('is-subpage')) return;
+            const activePhoto = currentPhotosInWork[currentPhotoIndex];
+            if (activePhoto) openModal(activePhoto.id);
+          });
 
-          if(window.WP_GRAPHQL_URL) {
-            fetch(window.WP_GRAPHQL_URL, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                query: `mutation IncrementLike($postId: Int!) { incrementLike(input: {postId: $postId}) { newCount } }`,
-                variables: { postId: parseInt(state.databaseId) }
-              })
-            }).catch(err => console.error('Like request failed', err));
-          }
-        };
+          // Slider dots click
+          document.querySelectorAll('.slider-dot').forEach(dot => {
+            dot.addEventListener('click', () => {
+              const idx = parseInt(dot.getAttribute('data-slide-index'));
+              heroCurrentIndex = idx;
+              updateHeroSlide(idx);
+            });
+          });
 
-        triggers.forEach(btn => {
-          btn.addEventListener('click', () => {
-            const target = btn.getAttribute('data-target');
-            const modelId = btn.getAttribute('data-model-id');
-            const newImage = btn.getAttribute('data-image');
-            const newTitle = btn.getAttribute('data-title');
-            const newBio = btn.getAttribute('data-bio');
-            const newPrompt = btn.getAttribute('data-prompt');
-            const newColor = btn.getAttribute('data-color') || '#F43F5E'; 
+          // Modal Controls
+          document.getElementById('modal-close-btn')?.addEventListener('click', closeModal);
+          document.getElementById('modal-backdrop-blur')?.addEventListener('click', closeModal);
+          document.getElementById('modal-next-btn')?.addEventListener('click', modalNext);
+          document.getElementById('modal-prev-btn')?.addEventListener('click', modalPrev);
 
-            if (target === 'view-works' && modelId) {
-              window.appState.currentModelData = { ...window.appState.currentModelData, title: newTitle, bio: newBio, prompt: '', image: newImage, color: newColor };
-              document.querySelectorAll('.js-work-item').forEach(item => { item.getAttribute('data-model-id') === modelId ? item.classList.remove('hidden') : item.classList.add('hidden'); });
-              const worksTitle = document.getElementById('works-title');
-              if (worksTitle && newTitle) worksTitle.textContent = `${newTitle}'s Works`;
+          // Modal Actions
+          document.getElementById('modal-like-btn')?.addEventListener('click', (e) => triggerLikeAnimation(e));
+          document.getElementById('modal-comment-btn')?.addEventListener('click', openCommentModal);
+
+          // Work Header Actions
+          document.getElementById('work-like-btn')?.addEventListener('click', (e) => triggerLikeAnimation(e));
+          document.getElementById('work-comment-btn')?.addEventListener('click', openCommentModal);
+
+          // Comments Modal Controls
+          document.getElementById('btn-close-comment-modal')?.addEventListener('click', closeCommentModal);
+          document.getElementById('btn-cancel-reply')?.addEventListener('click', cancelReply);
+          document.getElementById('comment-submit-btn')?.addEventListener('click', submitComment);
+          commentContentInput?.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') submitComment();
+          });
+
+          // Info Modal Controls
+          document.getElementById('btn-open-info')?.addEventListener('click', () => infoModal?.showModal());
+          document.getElementById('info-close-btn')?.addEventListener('click', () => infoModal?.close());
+          infoModal?.addEventListener('click', (e) => {
+            if (e.target === infoModal) infoModal.close();
+          });
+
+          // Keyboard Shortcuts
+          window.addEventListener('keydown', (e) => {
+            if (cinematicModal?.open) {
+              if (e.key === 'Escape') closeModal();
+              if (e.key === 'ArrowRight') modalNext();
+              if (e.key === 'ArrowLeft') modalPrev();
+              return;
             }
-
-            if (target === 'view-detail') {
-              const variations = JSON.parse(btn.getAttribute('data-variations') || '[]');
-              window.currentDetailGallery = variations; 
-              
-              window.appState.currentModelData.databaseId = btn.getAttribute('data-database-id');
-              window.appState.currentModelData.likes = parseInt(btn.getAttribute('data-likes') || '0');
-              window.appState.currentModelData.comments = JSON.parse(btn.getAttribute('data-comments') || '[]');
-
-              const gallery = document.getElementById('variation-gallery');
-              if (gallery) {
-                gallery.innerHTML = variations.map(url => `
-                  <button class="shrink-0 w-24 sm:w-32 lg:w-full aspect-square overflow-hidden rounded-xl outline-none group border border-white/5 transition-colors snap-center" style="--hover-border: ${newColor}80;" onmouseover="this.style.borderColor = this.style.getPropertyValue('--hover-border')" onmouseout="this.style.borderColor = 'rgba(255,255,255,0.05)'" onclick="window.updateHeroImage('${url}')">
-                    <img src="${url}" class="js-variation-img w-full h-full object-cover group-hover:scale-110 transition-all duration-500 ease-out" referrerpolicy="no-referrer" />
-                  </button>
-                `).join('');
+            if (commentModal?.open) {
+              if (e.key === 'Escape') closeCommentModal();
+              return;
+            }
+            if (infoModal?.open) {
+              if (e.key === 'Escape') infoModal.close();
+              return;
+            }
+            if (e.key === 'Escape') {
+              if (viewPhotos?.classList.contains('active')) {
+                showWorksView(currentModelId);
+              } else if (viewWorks?.classList.contains('active')) {
+                showCharactersView();
               }
             }
-
-            window.switchView(target, newImage, newTitle, newBio, newPrompt);
-            
-            if (window.innerWidth < 1024) {
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            } else {
-              document.getElementById('right-panel')?.scrollTo({ top: 0, behavior: 'smooth' });
-            }
           });
+
+          // Mouse wheel scroll forward from stage to panel (PC)
+          const stage = document.getElementById('main-visual-stage');
+          stage?.addEventListener('wheel', (e) => {
+            if (window.innerWidth > 960) {
+              const activePanel = document.querySelector('.panel-view-section.active');
+              if (activePanel) activePanel.scrollTop += e.deltaY;
+            }
+          }, { passive: true });
+        }
+
+        // Initialize App
+        function initApp() {
+          renderCharactersView();
+          initFloatingDock();
+          initCursor();
+          init3DTilt();
+          initModalGestures();
+          setupEventListeners();
+          showCharactersView();
+        }
+
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', initApp);
+        } else {
+          initApp();
+        }
+
+        // Astro page transitions support
+        document.addEventListener('astro:page-load', () => {
+          initApp();
         });
-
-        backBtns.forEach(btn => {
-          btn.addEventListener('click', () => {
-            const target = btn.getAttribute('data-target');
-            if (target === 'view-works') { window.switchView(target, window.appState.currentModelData.image, window.appState.currentModelData.title, window.appState.currentModelData.bio, ''); } 
-            else { window.switchView(target); }
-            
-            if (window.innerWidth < 1024) {
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            } else {
-              document.getElementById('right-panel')?.scrollTo({ top: 0, behavior: 'smooth' });
-            }
-          });
-        });
-
-        window.openCommentModal = () => {
-          const modal = document.getElementById('comment-modal');
-          const content = document.getElementById('comment-modal-content');
-          if(modal && content) {
-            modal.showModal();
-            setTimeout(() => { content.style.transform = 'scale(1)'; content.style.opacity = '1'; }, 10);
-            modal.onclick = (e) => {
-              if (e.target === modal) window.closeCommentModal();
-            };
-          }
-        };
-
-        window.closeCommentModal = () => {
-          const content = document.getElementById('comment-modal-content');
-          if(content) {
-            content.style.transform = 'scale(0.95)'; content.style.opacity = '0';
-            setTimeout(() => {
-              document.getElementById('comment-modal').close();
-              window.cancelReply(); 
-            }, 300);
-          }
-        };
-
-        window.changeLightboxImage = (newSrc) => { 
-          const img = document.getElementById('lightbox-img'); 
-          if (!img || img.src === newSrc) return; 
-          
-          img.classList.add('transition-transform', 'duration-200', 'ease-out');
-          img.classList.add('opacity-0', 'scale-95'); 
-          setTimeout(() => { 
-            const preloader = new Image(); preloader.src = newSrc; 
-            preloader.onload = () => { 
-              img.src = newSrc; 
-              window.appState.lightboxScale = 1; 
-              window.appState.panX = 0;
-              window.appState.panY = 0;
-              img.style.transform = `translate(0px, 0px) scale(1)`;
-              img.classList.remove('scale-95'); 
-              img.classList.remove('opacity-0'); 
-            }; 
-          }, 300); 
-        };
-
-        window.openLightbox = (src, gallery = []) => { 
-          const img = document.getElementById('lightbox-img'); 
-          const dialog = document.getElementById('lightbox'); 
-          const hint = document.getElementById('swipe-hint');
-          const prevBtn = document.getElementById('lightbox-prev'); 
-          const nextBtn = document.getElementById('lightbox-next');
-
-          if (img && dialog) { 
-            window.appState.lightboxScale = 1;
-            window.appState.panX = 0;
-            window.appState.panY = 0;
-            img.style.transform = `translate(0px, 0px) scale(1)`;
-            img.classList.add('transition-transform', 'duration-200', 'ease-out');
-            img.src = src; 
-            img.classList.remove('opacity-0', 'scale-95'); 
-            window.currentGallery = gallery.length > 0 ? gallery : [src]; 
-            window.currentGalleryIndex = window.currentGallery.indexOf(src); 
-            if(window.currentGalleryIndex === -1) window.currentGalleryIndex = 0; 
-            
-            if (window.currentGallery.length > 1) { 
-              if(prevBtn) prevBtn.classList.remove('hidden'); 
-              if(nextBtn) nextBtn.classList.remove('hidden'); 
-            } else { 
-              if(prevBtn) prevBtn.classList.add('hidden'); 
-              if(nextBtn) nextBtn.classList.add('hidden'); 
-            }
-
-            dialog.showModal(); 
-            if(window.appState.heroSlider && window.appState.heroSlider.Components.Autoplay) window.appState.heroSlider.Components.Autoplay.pause(); 
-            
-            if(hint && window.currentGallery.length > 1 && !window.hasSeenSwipeHint) {
-              hint.classList.remove('opacity-0');
-              setTimeout(() => hint.classList.add('opacity-0'), 2500);
-              window.hasSeenSwipeHint = true;
-            }
-          } 
-        };
-
-        window.prevLightboxImage = (e) => { if(e) e.stopPropagation(); if (!window.currentGallery || window.currentGallery.length <= 1) return; window.currentGalleryIndex = (window.currentGalleryIndex - 1 + window.currentGallery.length) % window.currentGallery.length; window.changeLightboxImage(window.currentGallery[window.currentGalleryIndex]); };
-        window.nextLightboxImage = (e) => { if(e) e.stopPropagation(); if (!window.currentGallery || window.currentGallery.length <= 1) return; window.currentGalleryIndex = (window.currentGalleryIndex + 1) % window.currentGallery.length; window.changeLightboxImage(window.currentGallery[window.currentGalleryIndex]); };
-        window.closeLightbox = () => { const dialog = document.getElementById('lightbox'); if (dialog) { dialog.close(); const isTopPage = document.getElementById('view-categories').classList.contains('active'); if(window.appState.heroSlider && isTopPage && window.appState.heroSlider.Components.Autoplay) window.appState.heroSlider.Components.Autoplay.play(); } };
-
-        const lightboxContainer = document.getElementById('lightbox-container'); 
-        let isDragging = false; 
-        let startX, startY; 
-        let startPanX = 0, startPanY = 0;
-        let touchStartX = 0; 
-        let touchStartY = 0; 
-        let initialPinchDistance = 0;
-        let initialPinchScale = 1;
-
-        const updateTransform = () => {
-          const img = document.getElementById('lightbox-img');
-          if (img) {
-            img.style.transform = `translate(${window.appState.panX}px, ${window.appState.panY}px) scale(${window.appState.lightboxScale})`;
-          }
-        };
-
-        const startDrag = (x, y) => { 
-          isDragging = true; 
-          lightboxContainer.style.cursor = 'grabbing'; 
-          startX = x; 
-          startY = y; 
-          startPanX = window.appState.panX || 0; 
-          startPanY = window.appState.panY || 0; 
-          
-          const img = document.getElementById('lightbox-img');
-          if (img) img.classList.remove('transition-transform', 'duration-200', 'ease-out');
-        }; 
-        
-        const stopDrag = () => { 
-          isDragging = false; 
-          lightboxContainer.style.cursor = 'grab'; 
-          const img = document.getElementById('lightbox-img');
-          if (img) img.classList.add('transition-transform', 'duration-200', 'ease-out');
-        }; 
-        
-        const moveDrag = (x, y) => { 
-          if(!isDragging) return; 
-          window.appState.panX = startPanX + (x - startX);
-          
-          // ▼ 修正: ズーム倍率が1（等倍）の場合はY軸への移動を0に固定し、横スワイプだけを許可します
-          if (window.appState.lightboxScale > 1) {
-             window.appState.panY = startPanY + (y - startY);
-          } else {
-             window.appState.panY = 0;
-          }
-          
-          updateTransform();
-        }; 
-        
-        lightboxContainer.addEventListener('mousedown', (e) => {
-          if (e.target.closest('button')) return;
-          startDrag(e.pageX, e.pageY);
-        }); 
-        window.addEventListener('mouseup', stopDrag); 
-        window.addEventListener('mousemove', (e) => { if (isDragging) { e.preventDefault(); moveDrag(e.pageX, e.pageY); } }); 
-        
-        lightboxContainer.addEventListener('touchstart', (e) => { 
-          if (e.touches.length === 2) {
-            isDragging = false;
-            initialPinchDistance = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
-            initialPinchScale = window.appState.lightboxScale || 1;
-            const img = document.getElementById('lightbox-img');
-            if (img) img.classList.remove('transition-transform', 'duration-200', 'ease-out');
-          } else if (e.touches.length === 1) {
-            touchStartX = e.touches[0].clientX; 
-            touchStartY = e.touches[0].clientY; 
-            startDrag(e.touches[0].pageX, e.touches[0].pageY); 
-          }
-        }, {passive: true}); 
-        
-        lightboxContainer.addEventListener('touchmove', (e) => {
-          if (e.touches.length === 2) {
-            e.preventDefault(); 
-            const currentDistance = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
-            let newScale = initialPinchScale * (currentDistance / initialPinchDistance);
-            window.appState.lightboxScale = Math.max(1, Math.min(newScale, 4));
-            
-            if (window.appState.lightboxScale === 1) {
-              window.appState.panX = 0;
-              window.appState.panY = 0;
-            }
-            updateTransform();
-          } else if (e.touches.length === 1) {
-            // ▼ 修正: スワイプ時の縦スクロールによるガタつきを防ぐため、常にデフォルト挙動を止めます
-            e.preventDefault(); 
-            moveDrag(e.touches[0].pageX, e.touches[0].pageY);
-          }
-        }, {passive: false});
-
-        lightboxContainer.addEventListener('touchend', (e) => { 
-          stopDrag(); 
-
-          if (e.changedTouches.length === 1) { 
-            const touchEndX = e.changedTouches[0].clientX; 
-            const touchEndY = e.changedTouches[0].clientY; 
-            const diffX = touchStartX - touchEndX; 
-            const diffY = touchStartY - touchEndY; 
-            
-            if (window.appState.lightboxScale === 1) { 
-              if (Math.abs(diffX) > 40 && Math.abs(diffX) > Math.abs(diffY)) { 
-                if (diffX > 0) { window.nextLightboxImage(); } 
-                else { window.prevLightboxImage(); } 
-              } else {
-                 window.appState.panX = 0;
-                 window.appState.panY = 0;
-                 updateTransform();
-              }
-            } 
-          } 
-        }); 
-
-        lightboxContainer.addEventListener('dblclick', (e) => { 
-          if (e.target.closest('button')) return; 
-          const img = document.getElementById('lightbox-img'); 
-          if (img) {
-            if (window.appState.lightboxScale > 1) {
-               window.appState.lightboxScale = 1;
-               window.appState.panX = 0;
-               window.appState.panY = 0;
-            } else {
-               window.appState.lightboxScale = 2;
-            }
-            updateTransform();
-          }
-        });
-      });
+      })();
     </script>
   </body>
 </html>
