@@ -72,16 +72,36 @@ const charactersData = models.map((m: any) => {
   const rgb = hexToRgbString(color);
   const avatar = secureUrl(m.modelAvatar?.node?.sourceUrl) || placeholderImg;
   const works = (m.artworks?.nodes || []).map((art: any) => {
-    const cover = secureUrl(art.featuredImage?.node?.sourceUrl) || placeholderImg;
-    const variationUrls = getVariationsArray(art);
-    const allImgUrls = variationUrls.length > 0 ? variationUrls : [cover];
-    const photos = allImgUrls.map((url: string, idx: number) => ({
-      id: `${art.databaseId || art.id}-${idx}`,
-      title: `${art.title} #${String(idx + 1).padStart(2, '0')}`,
-      image: url,
-      modelName: m.name,
-      workTitle: art.title,
-    }));
+    let photos: any[] = [];
+
+    if (art.normalizedImages && Array.isArray(art.normalizedImages)) {
+      photos = art.normalizedImages.map((img: any, idx: number) => ({
+        id: `${art.databaseId || art.id}-${img.id || idx}`,
+        title: img.title || `${art.title} #${String(idx + 1).padStart(2, '0')}`,
+        image: secureUrl(img.sourceUrl) || placeholderImg,
+        modelName: m.name,
+        workTitle: art.title,
+        contentRating: img.contentRating || 'safe',
+        sortOrder: img.sortOrder,
+      }));
+    } else {
+      const cover = secureUrl(art.featuredImage?.node?.sourceUrl) || placeholderImg;
+      const variationUrls = getVariationsArray(art);
+      const allImgUrls = variationUrls.length > 0 ? variationUrls : [cover];
+      photos = allImgUrls.map((url: string, idx: number) => ({
+        id: `${art.databaseId || art.id}-${idx}`,
+        title: `${art.title} #${String(idx + 1).padStart(2, '0')}`,
+        image: url,
+        modelName: m.name,
+        workTitle: art.title,
+        contentRating: 'safe',
+      }));
+    }
+
+    const cover = photos.length > 0
+      ? photos[0].image
+      : (secureUrl(art.featuredImage?.node?.sourceUrl) || placeholderImg);
+
     return {
       id: art.id,
       databaseId: art.databaseId || 0,
@@ -92,6 +112,7 @@ const charactersData = models.map((m: any) => {
       promptData: art.promptData || '',
       likeCount: art.likeCount || 0,
       guestComments: art.guestComments || [],
+      hasArtworkImages: Boolean(art.hasArtworkImages),
     };
   });
   return {
