@@ -3,13 +3,13 @@
 import { ClientRouter } from 'astro:transitions';
 import '../styles/gallery.css';
 import '../styles/app.scss';
-import { getGalleryData } from '../lib/wp';
+import { getGalleryData, DEFAULT_WP_GRAPHQL_URL } from '../lib/wp';
 
 // 1. WordPress (WPGraphQL + REST API ハイブリッド) からデータ取得
 const { siteInfo, sliders, models: rawModels } = await getGalleryData();
 
 // 画像URLのHTTPS化およびWordPressオリジン正規化ヘルパー
-const wpGraphqlUrl = import.meta.env.PUBLIC_WP_GRAPHQL_URL || '';
+const wpGraphqlUrl = (import.meta.env.PUBLIC_WP_GRAPHQL_URL || DEFAULT_WP_GRAPHQL_URL || '').trim();
 const secureUrl = (url: string) => {
   if (!url) return '';
   let httpsUrl = url.replace(/^http:\/\//i, 'https://');
@@ -172,6 +172,22 @@ const formattedGalleryData = (rawModels && rawModels.length > 0)
             sortOrder: pIdx + 1,
             distribution: { instagram: true, threads: true, x: true, patreon: 'public' },
           }));
+        }
+
+        // 万が一 photos が0件の場合のセーフティネット（カバー画像を1枚目として補充）
+        if (photos.length === 0) {
+          const fallbackCover = secureUrl(art.featuredImage?.node?.sourceUrl) || avatarSrc;
+          photos = [{
+            id: `${dbId || workId}-fallback-0`,
+            title: art.title,
+            image: fallbackCover,
+            workTitle: art.title,
+            modelName: displayName,
+            characterId: modelId,
+            contentRating: 'safe',
+            sortOrder: 1,
+            distribution: { instagram: true, threads: true, x: true, patreon: 'public' },
+          }];
         }
 
         const coverImage = photos.length > 0 ? photos[0].image : (secureUrl(art.featuredImage?.node?.sourceUrl) || avatarSrc);

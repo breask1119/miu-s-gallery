@@ -1,6 +1,17 @@
 // src/lib/wp.ts
 import { getDistributionByRating } from "./distribution";
 
+export const DEFAULT_WP_GRAPHQL_URL = "https://api.xx-ai-girls-miu.com/graphql";
+
+function getWpGraphqlUrl(): string {
+  const envUrl =
+    (typeof import.meta !== "undefined" && import.meta.env?.PUBLIC_WP_GRAPHQL_URL) ||
+    (typeof process !== "undefined" && process.env?.PUBLIC_WP_GRAPHQL_URL) ||
+    "";
+  const trimmed = envUrl.trim();
+  return trimmed || DEFAULT_WP_GRAPHQL_URL;
+}
+
 /**
  * WPGraphQLのエンドポイントに対してリクエストを送信する共通関数です。
  */
@@ -8,8 +19,7 @@ export async function fetchAPI(
   query: string,
   { variables }: { variables?: any } = {},
 ) {
-  let wpUrl = import.meta.env.PUBLIC_WP_GRAPHQL_URL;
-  if (!wpUrl) return {};
+  let wpUrl = getWpGraphqlUrl();
   if (!wpUrl.endsWith("/")) wpUrl += "/";
 
   const headers = {
@@ -35,8 +45,6 @@ export async function fetchAPI(
       const json = JSON.parse(text);
       if (json.errors) {
         console.error("🚨【GraphQLエラー】:", json.errors);
-        // ▼ エラーがあっても、他の正常なデータ（json.data）はレスポンスとして返す
-        // これにより、一部の画像が壊れていてもサイト全体がクラッシュするのを防ぎます
         return json.data || {};
       }
       return json.data || {};
@@ -55,11 +63,8 @@ export async function fetchAPI(
  * ページネーション (per_page=100) に対応し、全件を取得します。
  */
 export async function getAllArtworkImages(): Promise<any[]> {
-  let wpUrl = import.meta.env.PUBLIC_WP_GRAPHQL_URL || "";
-  if (!wpUrl) return [];
-
-  // GraphQLのエンドポイントURLからベースURLを抽出 (例: https://api.xx-ai-girls-miu.com/graphql -> https://api.xx-ai-girls-miu.com)
-  const baseUrl = wpUrl.replace(/\/graphql\/?$/i, "").replace(/\/+$/, "");
+  const wpUrl = getWpGraphqlUrl();
+  const baseUrl = wpUrl.replace(/\/graphql\/?$/i, "").replace(/\/+$/, "") || "https://api.xx-ai-girls-miu.com";
   const endpoint = `${baseUrl}/wp-json/wp/v2/artwork_image`;
 
   const allItems: any[] = [];
@@ -68,16 +73,37 @@ export async function getAllArtworkImages(): Promise<any[]> {
 
   try {
     while (true) {
-      const res = await fetch(`${endpoint}?per_page=${perPage}&page=${page}`, {
-        headers: {
-          "User-Agent": "Astro-Cloudflare-Pages-Builder",
-        },
-      });
+      const url = `${endpoint}?per_page=${perPage}&page=${page}`;
+      let res: Response | null = null;
+      let lastErr: any = null;
+
+      // 最大3回リトライ
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          res = await fetch(url, {
+            headers: {
+              Accept: "application/json",
+              "User-Agent": "Astro-Cloudflare-Pages-Builder",
+            },
+          });
+          if (res.ok || res.status === 400) break;
+          console.warn(`[wp.ts] REST API attempt ${attempt} returned status ${res.status}, retrying...`);
+        } catch (err) {
+          lastErr = err;
+          console.warn(`[wp.ts] REST API attempt ${attempt} network error:`, err);
+        }
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+
+      if (!res) {
+        console.error(`🚨【REST APIエラー】リトライ上限到達:`, lastErr);
+        break;
+      }
 
       if (!res.ok) {
-        // 400 (ページの範囲外など) の場合は正常終了とみなす
-        if (res.status === 400) break;
-        console.error(`🚨【REST APIエラー】HTTPステータス: ${res.status}`);
+        if (res.status === 400) break; // ページ範囲外
+        const errText = await res.text().catch(() => "");
+        console.error(`🚨【REST APIエラー】HTTPステータス: ${res.status}, Body: ${errText.substring(0, 200)}`);
         break;
       }
 
@@ -88,7 +114,7 @@ export async function getAllArtworkImages(): Promise<any[]> {
 
       const totalPagesHeader = res.headers.get("x-wp-totalpages");
       const totalPages = totalPagesHeader ? parseInt(totalPagesHeader, 10) : 1;
-      if (page >= totalPages) break;
+      if (page >= totalPages || data.length < perPage) break;
 
       page++;
     }
@@ -96,6 +122,7 @@ export async function getAllArtworkImages(): Promise<any[]> {
     console.error("🚨【REST API artwork_image取得エラー】:", err);
   }
 
+  console.log(`[wp.ts] Total artwork_images fetched: ${allItems.length}`);
   return allItems;
 }
 
@@ -105,10 +132,17 @@ export async function getAllArtworkImages(): Promise<any[]> {
  */
 export function normalizeArtworkGalleryImages(
   artwork: any,
-  artworkImagesByParentId: Map<number, any[]>
+  artworkImagesByParentId: Map<number, any[]>,
+  artworkImagesByParentTitle?: Map<string, any[]>
 ) {
   const artDbId = Number(artwork.databaseId);
-  const attachedImages = artworkImagesByParentId.get(artDbId) || [];
+  let attachedImages = artworkImagesByParentId.get(artDbId) || [];
+
+  // IDで紐付かなかった場合、作品タイトル(post_title)でフォールバック照合
+  if (attachedImages.length === 0 && artwork.title && artworkImagesByParentTitle) {
+    const cleanTitle = artwork.title.trim().toLowerCase();
+    attachedImages = artworkImagesByParentTitle.get(cleanTitle) || [];
+  }
 
   const hasArtworkImages = attachedImages.length > 0;
 
@@ -269,16 +303,20 @@ export async function getGalleryData() {
     getAllArtworkImages(),
   ]);
 
-  // REST APIの artwork_image を親作品の databaseId でインデックス化
+  // REST APIの artwork_image を親作品の databaseId および タイトル でインデックス化
   const artworkImagesByParentId = new Map<number, any[]>();
+  const artworkImagesByParentTitle = new Map<string, any[]>();
   for (const item of artworkImages) {
     let parentId: number | null = null;
+    let parentTitle: string | null = null;
+
     if (Array.isArray(item.parent_artwork) && item.parent_artwork.length > 0) {
-      parentId =
-        Number(item.parent_artwork[0].ID || item.parent_artwork[0].id) || null;
+      const p = item.parent_artwork[0];
+      parentId = Number(p.ID || p.id) || null;
+      parentTitle = p.post_title || null;
     } else if (item.parent_artwork && typeof item.parent_artwork === "object") {
-      parentId =
-        Number(item.parent_artwork.ID || item.parent_artwork.id) || null;
+      parentId = Number(item.parent_artwork.ID || item.parent_artwork.id) || null;
+      parentTitle = item.parent_artwork.post_title || null;
     } else if (item.parent_artwork) {
       parentId = Number(item.parent_artwork) || null;
     }
@@ -287,6 +325,12 @@ export async function getGalleryData() {
       const list = artworkImagesByParentId.get(parentId) || [];
       list.push(item);
       artworkImagesByParentId.set(parentId, list);
+    }
+    if (parentTitle) {
+      const clean = parentTitle.trim().toLowerCase();
+      const list = artworkImagesByParentTitle.get(clean) || [];
+      list.push(item);
+      artworkImagesByParentTitle.set(clean, list);
     }
   }
 
@@ -297,7 +341,8 @@ export async function getGalleryData() {
       nodes: (model.artworks?.nodes || []).map((art: any) => {
         const normalized = normalizeArtworkGalleryImages(
           art,
-          artworkImagesByParentId
+          artworkImagesByParentId,
+          artworkImagesByParentTitle
         );
 
         return {
