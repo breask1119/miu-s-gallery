@@ -6,7 +6,7 @@ import '../styles/app.scss';
 import { getGalleryData, DEFAULT_WP_GRAPHQL_URL } from '../lib/wp';
 
 // 1. WordPress (WPGraphQL + REST API ハイブリッド) からデータ取得
-const { siteInfo, sliders, models: rawModels } = await getGalleryData();
+const { siteInfo, sliders, models: rawModels, debugLog } = await getGalleryData();
 
 // 画像URLのHTTPS化およびWordPressオリジン正規化ヘルパー
 const wpGraphqlUrl = (import.meta.env.PUBLIC_WP_GRAPHQL_URL || DEFAULT_WP_GRAPHQL_URL || '').trim();
@@ -743,7 +743,8 @@ const schemaLD = {
   <script id="app-gallery-data" type="application/json" set:html={JSON.stringify({
     galleryData: formattedGalleryData,
     heroSliderList: heroSliderList,
-    allPhotosFlat: allPhotosFlat
+    allPhotosFlat: allPhotosFlat,
+    debugLog: debugLog
   })} />
 
   <!-- APP CLIENT-SIDE INTERACTION SCRIPT -->
