@@ -58,14 +58,6 @@ export async function fetchAPI(
   }
 }
 
-export const debugLog: any = {
-  wpUrl: "",
-  endpoint: "",
-  attempts: [],
-  totalFetched: 0,
-  error: null,
-};
-
 /**
  * 全ての artwork_image (Pods Admin) を WordPress REST API から一括取得します。
  * ページネーション (per_page=100) に対応し、全件を取得します。
@@ -74,9 +66,6 @@ export async function getAllArtworkImages(): Promise<any[]> {
   const wpUrl = getWpGraphqlUrl();
   const baseUrl = wpUrl.replace(/\/graphql\/?$/i, "").replace(/\/+$/, "") || "https://api.xx-ai-girls-miu.com";
   const endpoint = `${baseUrl}/wp-json/wp/v2/artwork_image`;
-
-  debugLog.wpUrl = wpUrl;
-  debugLog.endpoint = endpoint;
 
   const allItems: any[] = [];
   let page = 1;
@@ -97,25 +86,10 @@ export async function getAllArtworkImages(): Promise<any[]> {
               "User-Agent": "Astro-Cloudflare-Pages-Builder",
             },
           });
-          debugLog.attempts.push({
-            attempt,
-            page,
-            url,
-            status: res.status,
-            statusText: res.statusText,
-            ok: res.ok,
-            headers: Object.fromEntries(res.headers.entries()),
-          });
           if (res.ok || res.status === 400) break;
           console.warn(`[wp.ts] REST API attempt ${attempt} returned status ${res.status}, retrying...`);
         } catch (err: any) {
           lastErr = err;
-          debugLog.attempts.push({
-            attempt,
-            page,
-            url,
-            error: String(err?.message || err),
-          });
           console.warn(`[wp.ts] REST API attempt ${attempt} network error:`, err);
         }
         await new Promise((r) => setTimeout(r, 1000));
@@ -123,14 +97,12 @@ export async function getAllArtworkImages(): Promise<any[]> {
 
       if (!res) {
         console.error(`🚨【REST APIエラー】リトライ上限到達:`, lastErr);
-        debugLog.error = `Retry limit reached: ${String(lastErr)}`;
         break;
       }
 
       if (!res.ok) {
         if (res.status === 400) break; // ページ範囲外
         const errText = await res.text().catch(() => "");
-        debugLog.error = `HTTP ${res.status}: ${errText.substring(0, 300)}`;
         console.error(`🚨【REST APIエラー】HTTPステータス: ${res.status}, Body: ${errText.substring(0, 200)}`);
         break;
       }
@@ -147,11 +119,9 @@ export async function getAllArtworkImages(): Promise<any[]> {
       page++;
     }
   } catch (err: any) {
-    debugLog.error = `Catch: ${String(err?.message || err)}`;
     console.error("🚨【REST API artwork_image取得エラー】:", err);
   }
 
-  debugLog.totalFetched = allItems.length;
   console.log(`[wp.ts] Total artwork_images fetched: ${allItems.length}`);
   return allItems;
 }
@@ -394,6 +364,5 @@ export async function getGalleryData() {
     siteInfo: data?.generalSettings || { title: "Gallery", description: "" },
     sliders: data?.sliders?.nodes || [],
     models,
-    debugLog,
   };
 }
