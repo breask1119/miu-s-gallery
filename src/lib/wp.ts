@@ -24,7 +24,8 @@ export async function fetchAPI(
 
   const headers = {
     "Content-Type": "application/json",
-    "User-Agent": "Astro-Cloudflare-Pages-Builder",
+    "User-Agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
   };
 
   try {
@@ -95,7 +96,8 @@ export async function getAllArtworkImages(): Promise<any[]> {
           res = await fetch(url, {
             headers: {
               Accept: "application/json",
-              "User-Agent": "Astro-Cloudflare-Pages-Builder",
+              "User-Agent":
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
             },
           });
           debugLog.attempts.push({
