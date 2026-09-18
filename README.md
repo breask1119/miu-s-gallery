@@ -27,9 +27,10 @@ Inside of your Astro project, you'll see the following folders and files:
 ```
 
 To learn more about the folder structure of an Astro project, refer to [our guide on project structure](https://docs.astro.build/en/basics/project-structure/).
+- [@astrojs/tailwind](https://docs.astro.build/en/guides/integrations-guide/tailwind/)
+- [Tailwind CSS Documentation](https://tailwindcss.com/docs)
 
-## 🧞 Commands
-
+<!-- build-trigger: 2026-09-18T12:40 -->
 All commands are run from the root of the project, from a terminal:
 
 | Command                   | Action                                           |
