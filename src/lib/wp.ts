@@ -1,4 +1,5 @@
 // src/lib/wp.ts
+import { getDistributionByRating } from "./distribution";
 
 /**
  * WPGraphQLのエンドポイントに対してリクエストを送信する共通関数です。
@@ -171,14 +172,17 @@ export function normalizeArtworkGalleryImages(
               ? Number(item.sort_order)
               : idx + 1,
           galleryVisible: true,
+          distribution: getDistributionByRating(rating),
         };
       }),
     };
   }
 
   // 旧方式: artwork_image が0件の場合は既存の featuredImage + variationImages をそのまま使用
-  const variationNodes =
+  // WPGraphQLのvariationImagesは降順で返ってくるため、逆順にして本来の意図する順序(01 -> 02...)に整える
+  const rawVariationNodes =
     artwork.orderedImages || artwork.variationImages?.nodes || [];
+  const variationNodes = [...rawVariationNodes].reverse();
   let fallbackList: any[] = [];
 
   if (variationNodes.length > 0) {
@@ -193,6 +197,7 @@ export function normalizeArtworkGalleryImages(
       contentRating: "safe",
       sortOrder: idx + 1,
       galleryVisible: true,
+      distribution: getDistributionByRating("safe"),
     }));
   } else if (artwork.featuredImage?.node?.sourceUrl) {
     fallbackList = [
@@ -204,6 +209,7 @@ export function normalizeArtworkGalleryImages(
         contentRating: "safe",
         sortOrder: 1,
         galleryVisible: true,
+        distribution: getDistributionByRating("safe"),
       },
     ];
   }

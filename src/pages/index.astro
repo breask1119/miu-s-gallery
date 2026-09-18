@@ -1,15 +1,15 @@
 ---
 // src/pages/index.astro
 import { ClientRouter } from 'astro:transitions';
-import '../styles/app.scss';
 import '../styles/gallery.css';
+import '../styles/app.scss';
 import { getGalleryData } from '../lib/wp';
 
-const { siteInfo, sliders, models } = await getGalleryData();
+// 1. WordPress (WPGraphQL + REST API ハイブリッド) からデータ取得
+const { siteInfo, sliders, models: rawModels } = await getGalleryData();
 
-const placeholderImg = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1200&auto=format&fit=crop";
+// 画像URLのHTTPS化およびWordPressオリジン正規化ヘルパー
 const wpGraphqlUrl = import.meta.env.PUBLIC_WP_GRAPHQL_URL || '';
-
 const secureUrl = (url: string) => {
   if (!url) return '';
   let httpsUrl = url.replace(/^http:\/\//i, 'https://');
@@ -28,23 +28,229 @@ const secureUrl = (url: string) => {
   return httpsUrl;
 };
 
+const placeholderImg = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1200&auto=format&fit=crop";
+
+const getValidColor = (color: string) => (color && color.trim() !== '') ? color : '#F43F5E';
+
 const hexToRgbString = (hex: string) => {
-  const validHex = hex && hex.trim() !== '' ? hex : '#F43F5E';
+  const validHex = getValidColor(hex);
   let cleanHex = validHex.replace('#', '');
   if (cleanHex.length === 3) {
     cleanHex = cleanHex.split('').map(c => c + c).join('');
   }
-  const r = parseInt(cleanHex.slice(0, 2), 16);
-  const g = parseInt(cleanHex.slice(2, 4), 16);
-  const b = parseInt(cleanHex.slice(4, 6), 16);
-  if (isNaN(r) || isNaN(g) || isNaN(b)) {
-    return '244, 63, 94';
-  }
+  const r = parseInt(cleanHex.substring(0, 2), 16) || 0;
+  const g = parseInt(cleanHex.substring(2, 4), 16) || 0;
+  const b = parseInt(cleanHex.substring(4, 6), 16) || 0;
   return `${r}, ${g}, ${b}`;
 };
 
-const getValidColor = (color: string) => (color && color.trim() !== '') ? color : '#F43F5E';
+// キャラクター名と英字の対応表（全12モデル対応、表記揺れ対応）
+const characterNameMap: Record<string, string> = {
+  "美羽": "Miu",
+  "美夜": "Miya",
+  "美姫": "Miki",
+  "美桜": "Mio",
+  "美空": "Miku",
+  "美玖": "Miku",
+  "美英": "Miei",
+  "美詠": "Miei",
+  "美香": "Mika",
+  "美華": "Mika",
+  "美緑": "Midori",
+  "美鳥": "Midori",
+  "未来": "Mirai",
+  "美莱": "Mirai",
+  "美柚": "Miyuzu",
+  "美ゆず": "Miyuzu",
+  "美登": "Mito",
+  "美豊": "Mito",
+  "雪": "Yuki",
+  "ユキ": "Yuki",
+};
 
+const slugNameMap: Record<string, string> = {
+  "miu": "Miu",
+  "miya": "Miya",
+  "miki": "Miki",
+  "mio": "Mio",
+  "miku": "Miku",
+  "miei": "Miei",
+  "mika": "Mika",
+  "midori": "Midori",
+  "mirai": "Mirai",
+  "miyuzu": "Miyuzu",
+  "mito": "Mito",
+  "yuki": "Yuki",
+};
+
+// モデル名を「漢字 / アルファベット (例: 美羽 / Miu)」に整形するヘルパー
+const formatModelDisplayName = (name: string, slug?: string) => {
+  if (!name) return '';
+  const clean = name.trim();
+  if (clean.includes('/')) return clean;
+
+  if (characterNameMap[clean]) {
+    return `${clean} / ${characterNameMap[clean]}`;
+  }
+
+  if (slug) {
+    const en = slug.charAt(0).toUpperCase() + slug.slice(1).toLowerCase();
+    if (!clean.toLowerCase().includes(slug.toLowerCase())) {
+      return `${clean} / ${en}`;
+    }
+  }
+
+  return clean;
+};
+
+// タイトルHTML（漢字とアルファベットを別々のspanにして細身の洗練されたタイポグラフィを適用）
+const formatTitleHtml = (displayName: string) => {
+  if (!displayName) return '';
+  if (displayName.includes(' / ')) {
+    const [kanji, romaji] = displayName.split(' / ');
+    return `<span class="char-kanji">${kanji}</span><span class="char-divider">/</span><span class="char-romaji">${romaji}</span>`;
+  }
+  return `<span class="char-kanji">${displayName}</span>`;
+};
+
+// キャラクター英名取得ヘルパー（バッジ表示用）
+const getRomajiName = (name: string, slug?: string) => {
+  if (!name) return 'Miu';
+  if (name.includes(' / ')) return name.split(' / ')[1].trim();
+  const clean = name.trim();
+  if (characterNameMap[clean]) return characterNameMap[clean];
+  const lower = clean.toLowerCase();
+  if (slugNameMap[lower]) return slugNameMap[lower];
+  if (slug && slugNameMap[slug.toLowerCase()]) return slugNameMap[slug.toLowerCase()];
+  if (slug && slug !== 'featured') return slug.charAt(0).toUpperCase() + slug.slice(1).toLowerCase();
+  return clean.charAt(0).toUpperCase() + clean.slice(1);
+};
+
+// WordPressのデータを home-version の 3-Tier UI 用データ構造へ統合変換
+// (新方式: artwork_image / 旧方式: variation_images を work.photos に一元化)
+const formattedGalleryData = (rawModels && rawModels.length > 0)
+  ? rawModels.map((model: any) => {
+      const modelId = model.slug || model.id || `model-${Math.random().toString(36).substring(2, 7)}`;
+      const displayName = formatModelDisplayName(model.name, model.slug);
+      const originalColor = getValidColor(model.memberColor);
+      const originalRgb = hexToRgbString(originalColor);
+      const avatarSrc = secureUrl(model.modelAvatar?.node?.sourceUrl) || placeholderImg;
+
+      const rawArtworks = model.artworks?.nodes || [];
+      const works = rawArtworks.map((art: any, artIdx: number) => {
+        const workId = art.slug || art.id || `${modelId}-work-${artIdx + 1}`;
+        const dbId = art.databaseId || 0;
+
+        // wp.ts 内で正規化済みの normalizedImages を優先使用
+        let photos: any[] = [];
+        if (art.normalizedImages && Array.isArray(art.normalizedImages)) {
+          photos = art.normalizedImages.map((img: any, pIdx: number) => ({
+            id: `${dbId || workId}-${img.id || pIdx}`,
+            title: img.title || `${art.title} #${String(pIdx + 1).padStart(2, '0')}`,
+            image: secureUrl(img.sourceUrl) || placeholderImg,
+            workTitle: art.title,
+            modelName: displayName,
+            characterId: modelId,
+            contentRating: img.contentRating || 'safe',
+            sortOrder: img.sortOrder,
+            distribution: img.distribution,
+          }));
+        } else {
+          // 旧方式フォールバック
+          const cover = secureUrl(art.featuredImage?.node?.sourceUrl) || avatarSrc;
+          const varImages = art.orderedImages || art.variationImages?.nodes || [];
+          const orderedVarImages = [...varImages].reverse();
+          const imgUrls = orderedVarImages.length > 0 ? orderedVarImages.map((v: any) => secureUrl(typeof v === 'string' ? v : v.sourceUrl)) : [cover];
+          photos = imgUrls.map((url: string, pIdx: number) => ({
+            id: `${dbId || workId}-${pIdx}`,
+            title: `${art.title} #${String(pIdx + 1).padStart(2, '0')}`,
+            image: url,
+            workTitle: art.title,
+            modelName: displayName,
+            characterId: modelId,
+            contentRating: 'safe',
+            sortOrder: pIdx + 1,
+            distribution: { instagram: true, threads: true, x: true, patreon: 'public' },
+          }));
+        }
+
+        const coverImage = photos.length > 0 ? photos[0].image : (secureUrl(art.featuredImage?.node?.sourceUrl) || avatarSrc);
+
+        return {
+          id: workId,
+          databaseId: dbId,
+          title: art.title,
+          slug: art.slug,
+          coverImage: coverImage,
+          photos: photos,
+          likeCount: art.likeCount || 0,
+          guestComments: art.guestComments || [],
+          promptData: art.promptData || '',
+          hasArtworkImages: Boolean(art.hasArtworkImages),
+        };
+      });
+
+      return {
+        id: modelId,
+        dbId: model.id,
+        name: displayName,
+        rawName: model.name,
+        color: originalColor,
+        rgb: originalRgb,
+        avatar: avatarSrc,
+        bio: model.modelBio || '',
+        works: works,
+      };
+    })
+  : [];
+
+// トップ画面の自動スライダー用データ
+const heroSliderList = (sliders && sliders.length > 0)
+  ? sliders.map((s: any, idx: number) => {
+      const src = secureUrl(s.featuredImage?.node?.sourceUrl) || placeholderImg;
+      const sColor = getValidColor(s.memberColor);
+      const matchedModel = rawModels?.find((m: any) => m.name === s.title || m.slug === s.title);
+      const displayName = matchedModel
+        ? formatModelDisplayName(matchedModel.name, matchedModel.slug)
+        : (s.title ? formatModelDisplayName(s.title) : "美羽 / Miu");
+      return {
+        id: `slider-${idx}`,
+        title: s.title || 'Featured',
+        image: src,
+        workTitle: s.title || 'Featured',
+        modelName: displayName,
+        characterId: matchedModel?.slug || 'featured',
+        color: sColor,
+        rgb: hexToRgbString(sColor),
+      };
+    })
+  : formattedGalleryData.map((c: any) => {
+      const firstWork = c.works[0] || {};
+      const firstPhoto = firstWork.photos?.[0] || { id: c.id, title: c.name, image: c.avatar };
+      return {
+        ...firstPhoto,
+        characterId: c.id,
+        modelName: c.name,
+        workTitle: firstWork.title || c.name,
+        color: c.color,
+        rgb: c.rgb,
+      };
+    });
+
+// 全写真フラット配列
+const allPhotosFlat = formattedGalleryData.flatMap((model: any) =>
+  model.works.flatMap((work: any) =>
+    work.photos.map((photo: any) => ({
+      ...photo,
+      characterId: model.id,
+      modelName: model.name,
+      workTitle: work.title,
+      databaseId: work.databaseId,
+    }))
+  )
+);
+
+// HTMLエンティティデコード
 const decodeHtmlEntities = (str: string) => {
   if (!str) return '';
   return str
@@ -57,92 +263,10 @@ const decodeHtmlEntities = (str: string) => {
     .replace(/&#8216;/g, '‘');
 };
 
-const getVariationsArray = (art: any) => {
-  const images = art.orderedImages || art.variationImages?.nodes;
-  if (images && images.length > 0) {
-    return images.map((img: any) => secureUrl(img.sourceUrl));
-  }
-  const featured = secureUrl(art.featuredImage?.node?.sourceUrl);
-  return featured ? [featured] : [placeholderImg];
-};
-
-// クライアント側UI用データ構造に変換
-const charactersData = models.map((m: any) => {
-  const color = getValidColor(m.memberColor);
-  const rgb = hexToRgbString(color);
-  const avatar = secureUrl(m.modelAvatar?.node?.sourceUrl) || placeholderImg;
-  const works = (m.artworks?.nodes || []).map((art: any) => {
-    let photos: any[] = [];
-
-    if (art.normalizedImages && Array.isArray(art.normalizedImages)) {
-      photos = art.normalizedImages.map((img: any, idx: number) => ({
-        id: `${art.databaseId || art.id}-${img.id || idx}`,
-        title: img.title || `${art.title} #${String(idx + 1).padStart(2, '0')}`,
-        image: secureUrl(img.sourceUrl) || placeholderImg,
-        modelName: m.name,
-        workTitle: art.title,
-        contentRating: img.contentRating || 'safe',
-        sortOrder: img.sortOrder,
-      }));
-    } else {
-      const cover = secureUrl(art.featuredImage?.node?.sourceUrl) || placeholderImg;
-      const variationUrls = getVariationsArray(art);
-      const allImgUrls = variationUrls.length > 0 ? variationUrls : [cover];
-      photos = allImgUrls.map((url: string, idx: number) => ({
-        id: `${art.databaseId || art.id}-${idx}`,
-        title: `${art.title} #${String(idx + 1).padStart(2, '0')}`,
-        image: url,
-        modelName: m.name,
-        workTitle: art.title,
-        contentRating: 'safe',
-      }));
-    }
-
-    const cover = photos.length > 0
-      ? photos[0].image
-      : (secureUrl(art.featuredImage?.node?.sourceUrl) || placeholderImg);
-
-    return {
-      id: art.id,
-      databaseId: art.databaseId || 0,
-      title: art.title,
-      slug: art.slug,
-      coverImage: cover,
-      photos,
-      promptData: art.promptData || '',
-      likeCount: art.likeCount || 0,
-      guestComments: art.guestComments || [],
-      hasArtworkImages: Boolean(art.hasArtworkImages),
-    };
-  });
-  return {
-    id: m.slug || m.id,
-    dbId: m.id,
-    name: m.name,
-    bio: m.modelBio || '',
-    color,
-    rgb,
-    avatar,
-    works,
-  };
-});
-
-// トップ画面用スライダーデータ
-const slidesData = (sliders && sliders.length > 0 ? sliders : [{
-  title: 'Welcome',
-  featuredImage: { node: { sourceUrl: placeholderImg } },
-  memberColor: '#F43F5E'
-}]).map((s: any) => ({
-  title: s.title || '',
-  image: secureUrl(s.featuredImage?.node?.sourceUrl) || placeholderImg,
-  color: getValidColor(s.memberColor),
-  rgb: hexToRgbString(s.memberColor),
-}));
-
-const siteTitle = decodeHtmlEntities(siteInfo.title) || "Miu's Gallery | Fine Photography & Character Archive";
-const siteDescription = decodeHtmlEntities(siteInfo.description) || "オリジナルキャラクターの「美羽」達の美麗な写真をお楽しみください。";
+const siteTitle = decodeHtmlEntities(siteInfo?.title) || "Miu's Gallery — Fine Photography & Character Archive";
+const siteDescription = decodeHtmlEntities(siteInfo?.description) || "枠にとらわれないダイナミックな写真レイアウトと、各キャラクター作品へのシームレスなアクセス性を追求した次世代フォトギャラリー。";
 const siteUrl = Astro.site ? Astro.site.toString() : "https://xx-ai-girls-miu.com/";
-const ogImageUrl = slidesData[0]?.image || placeholderImg;
+const ogImageUrl = heroSliderList[0]?.image || placeholderImg;
 
 const schemaLD = {
   "@context": "https://schema.org",
@@ -160,1349 +284,1579 @@ const schemaLD = {
 
 <!DOCTYPE html>
 <html lang="ja" class="dark">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    
-    <!-- SEO & OGP -->
-    <title>{siteTitle}</title>
-    <meta name="description" content={siteDescription} />
-    <link rel="canonical" href={siteUrl} />
-    
-    <meta property="og:site_name" content={siteTitle} />
-    <meta property="og:title" content={siteTitle} />
-    <meta property="og:description" content={siteDescription} />
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content={siteUrl} />
-    <meta property="og:image" content={ogImageUrl} />
-    
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content={siteTitle} />
-    <meta name="twitter:description" content={siteDescription} />
-    <meta name="twitter:image" content={ogImageUrl} />
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>{siteTitle}</title>
+  <meta name="description" content={siteDescription}>
+  <link rel="canonical" href={siteUrl}>
 
-    <!-- PWA & Favicon -->
-    <link rel="icon" type="image/png" href="/favicon.png" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="theme-color" content="#060608" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="Miu's Gallery" />
-    
-    <ClientRouter />
+  <!-- OGP & Twitter Cards -->
+  <meta property="og:site_name" content={siteTitle}>
+  <meta property="og:title" content={siteTitle}>
+  <meta property="og:description" content={siteDescription}>
+  <meta property="og:type" content="website">
+  <meta property="og:url" content={siteUrl}>
+  <meta property="og:image" content={ogImageUrl}>
+  
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content={siteTitle}>
+  <meta name="twitter:description" content={siteDescription}>
+  <meta name="twitter:image" content={ogImageUrl}>
 
-    <!-- Service Worker Registration -->
-    <script>
-      import { registerSW } from 'virtual:pwa-register';
-      if ('serviceWorker' in navigator) {
-        const updateSW = registerSW({
-          immediate: true,
-          onNeedRefresh() {
-            updateSW(true);
-          }
-        });
-      }
-    </script>
+  <!-- PWA & Favicon -->
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#060608">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Miu's Gallery">
 
-    <!-- Google Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;800&family=Noto+Sans+JP:wght@300;400;500;700&family=Outfit:wght@200;300;400;600;800&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+  <!-- Fonts (Zen Kaku Gothic New + Outfit + Cinzel + Plus Jakarta Sans) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600&family=Noto+Sans+JP:wght@200;300;400;500&family=Outfit:wght@200;300;400;500;600&family=Plus+Jakarta+Sans:wght@300;400;500;600&family=Zen+Kaku+Gothic+New:wght@300;400;500&display=swap" rel="stylesheet">
+  
+  <!-- Lucide Icons -->
+  <script is:inline src="https://unpkg.com/lucide@latest"></script>
+  
+  <!-- GSAP CDN -->
+  <script is:inline src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
 
-    <!-- JSON-LD 構造化データ -->
-    <script type="application/ld+json" set:html={JSON.stringify(schemaLD)} />
+  <ClientRouter />
 
-    <!-- OneSignal Web Push SDK -->
-    <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
-    <script is:inline>
-      window.OneSignalDeferred = window.OneSignalDeferred || [];
-      OneSignalDeferred.push(async function(OneSignal) {
-        await OneSignal.init({
-          appId: "06418ce1-102a-4a7b-a88b-069b594cf919",
-          promptOptions: {
-            slidedown: {
-              prompts: [
-                {
-                  type: "push",
-                  autoPrompt: true,
-                  text: {
-                    actionMessage: "新しいギャラリーが追加されたら通知を受け取りますか？",
-                    acceptButton: "受け取る",
-                    cancelButton: "あとで",
-                  },
-                  delay: {
-                    pageViews: 1,
-                    timeDelay: 5 
-                  }
-                }
-              ]
-            }
-          }
-        });
+  <!-- PWA Service Worker Registration -->
+  <script>
+    import { registerSW } from 'virtual:pwa-register';
+    if ('serviceWorker' in navigator) {
+      const updateSW = registerSW({
+        immediate: true,
+        onNeedRefresh() {
+          updateSW(true);
+        }
       });
-    </script>
+    }
+  </script>
 
-    <script define:vars={{ wpGraphqlUrl }}>
-      window.WP_GRAPHQL_URL = wpGraphqlUrl;
-    </script>
-  </head>
-
-  <body class="bg-base text-slate-100 selection:bg-rose-500 selection:text-white">
-    <!-- Dynamic Ambient Background (GPU Accelerated) -->
-    <div id="ambient-aura-layer" class="ambient-aura-layer" aria-hidden="true"></div>
-
-    <!-- Interactive Custom Cursor (PC fine pointer only) -->
-    <div id="custom-cursor" class="custom-cursor" aria-hidden="true">
-      <div class="cursor-dot"></div>
-      <div class="cursor-ring"></div>
-      <span class="cursor-label">EXPAND</span>
-    </div>
-
-    <!-- Floating Top Bar: Logo, Social Links & About -->
-    <header class="floating-top-bar" id="floating-top-bar">
-      <div class="floating-brand-group">
-        <button class="floating-brand-logo" id="brand-home-link" aria-label="Miu's Gallery Home">
-          <span class="brand-sym">✦</span>
-          <span>Miu's <span class="brand-sub">Gallery</span></span>
-        </button>
-
-        <div class="floating-social-links">
-          <!-- Instagram -->
-          <a href="https://www.instagram.com/xx.ai.girls.miu0402/" target="_blank" rel="noopener noreferrer" class="social-icon-btn instagram-btn" aria-label="Instagram">
-            <svg class="social-svg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
-              <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
-              <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
-            </svg>
-          </a>
-
-          <!-- Patreon -->
-          <a href="https://www.patreon.com/cw/u73055670?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_creator&utm_content=copyLink" target="_blank" rel="noopener noreferrer" class="social-icon-btn patreon-btn" aria-label="Patreon">
-            <svg class="social-svg-icon patreon-new-logo" viewBox="0 0 1080 1080" fill="currentColor" aria-hidden="true">
-              <path d="M1033.05,324.45c-0.19-137.9-107.59-250.92-233.6-291.7c-156.48-50.64-362.86-43.3-512.28,27.2 C106.07,145.41,49.18,332.61,47.06,519.31c-1.74,153.5,13.58,557.79,241.62,560.67c169.44,2.15,194.67-216.18,273.07-321.33 c55.78-74.81,127.6-95.94,216.01-117.82C929.71,603.22,1033.27,483.3,1033.05,324.45z"></path>
-            </svg>
-          </a>
-
-          <!-- Info / About Button -->
-          <button id="btn-open-info" class="social-icon-btn info-btn" aria-label="About Gallery">
-            <svg class="social-svg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="12" y1="16" x2="12" y2="12"></line>
-              <line x1="12" y1="8" x2="12.01" y2="8"></line>
-            </svg>
-          </button>
-        </div>
-      </div>
-    </header>
-
-    <!-- APP MAIN: 100dvh VIEWPORT APP -->
-    <main class="app-viewport-container">
-
-      <!-- LEFT / TOP PANE: DYNAMIC MAIN VISUAL STAGE -->
-      <section class="main-visual-stage" id="main-visual-stage" aria-label="メイン写真ビュー">
-        
-        <!-- Background Ambient Blur Image Layer -->
-        <div class="stage-blur-layer" id="stage-blur-layer">
-          <img id="stage-blur-img" src={slidesData[0]?.image} alt="" aria-hidden="true">
-        </div>
-
-        <!-- Main High-Res Photo Container (Click to expand) -->
-        <div class="stage-photo-wrapper tilt-element" id="stage-photo-wrapper" data-tilt-intensity="6">
-          <img id="main-stage-img" src={slidesData[0]?.image} alt="Featured Photo" class="main-stage-photo" fetchpriority="high">
-          
-          <!-- Expand Prompt Overlay -->
-          <div class="photo-expand-prompt">
-            <span class="prompt-pill">
-              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="15 3 21 3 21 9"></polyline>
-                <polyline points="9 21 3 21 3 15"></polyline>
-                <line x1="21" y1="3" x2="14" y2="10"></line>
-                <line x1="3" y1="21" x2="10" y2="14"></line>
-              </svg>
-              <span class="pc-text">CLICK TO EXPAND</span>
-              <span class="sp-text">TAP TO EXPAND</span>
-            </span>
-          </div>
-        </div>
-
-        <!-- Stage Title Overlay -->
-        <div class="stage-title-overlay" id="stage-title-overlay">
-          <h1 class="stage-clean-title" id="stage-char-name">{slidesData[0]?.title || "Miu's Gallery"}</h1>
-        </div>
-
-        <!-- Stage Slider Dots (トップ画面自動スライダー時のインジケーター) -->
-        <div class="stage-slider-dots active" id="stage-slider-dots" aria-hidden="true">
-          {slidesData.map((_, i) => (
-            <button class={`slider-dot ${i === 0 ? 'active' : ''}`} data-slide-index={i} aria-label={`スライド ${i + 1} へ移動`}></button>
-          ))}
-        </div>
-
-      </section>
-
-      <!-- RIGHT / BOTTOM PANE: 3-TIER CONTENT & NAVIGATION PANEL -->
-      <aside class="side-content-panel" id="side-content-panel" aria-label="モデル＆作品ナビゲーション">
-        
-        <!-- TIER 1: CHARACTERS LIST (Initial State) -->
-        <div class="panel-view-section active" id="view-characters">
-          <div class="panel-view-header">
-            <div>
-              <h2 class="panel-heading">MODELS & CHARACTERS</h2>
-              <p class="panel-subtext">モデルを選択して作品アルバムへ</p>
-            </div>
-          </div>
-
-          <div class="characters-grid-list" id="characters-grid-list">
-            <!-- Injected by Client JS from charactersData -->
-          </div>
-        </div>
-
-        <!-- TIER 2: WORKS LIST OF SELECTED MODEL -->
-        <div class="panel-view-section" id="view-works">
-          
-          <!-- Back Navigation to Models -->
-          <div class="panel-nav-bar">
-            <button class="panel-back-btn" id="btn-back-to-characters" aria-label="モデル一覧に戻る">
-              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="19" y1="12" x2="5" y2="12"></line>
-                <polyline points="12 19 5 12 12 5"></polyline>
-              </svg>
-              <span>MODELS & CHARACTERS</span>
-            </button>
-          </div>
-
-          <!-- Selected Model Header Summary Card -->
-          <div class="active-model-card" id="active-model-summary">
-            <div class="model-card-top">
-              <div class="model-avatar-circle">
-                <img id="active-model-avatar" src="" alt="Model Avatar">
-              </div>
-              <div class="model-text-meta">
-                <h3 class="model-card-name" id="active-model-name">Model Name</h3>
-              </div>
-              <div class="model-works-count-pill" id="active-model-works-count">0 Works</div>
-            </div>
-            <div id="active-model-bio" class="text-gray-400 text-xs mt-3 leading-relaxed border-t border-white/5 pt-3 hidden font-light"></div>
-          </div>
-
-          <!-- Works / Albums List -->
-          <div class="section-sub-heading">
-            <span>WORKS & ALBUMS</span>
-            <span class="sub-hint">作品を選択</span>
-          </div>
-          <div class="works-albums-list" id="works-albums-list">
-            <!-- Injected by Client JS -->
-          </div>
-
-        </div>
-
-        <!-- TIER 3: PHOTOS THUMBNAIL GRID (Inside Selected Work) -->
-        <div class="panel-view-section" id="view-photos">
-          
-          <!-- Back Navigation to Works List -->
-          <div class="panel-nav-bar">
-            <button class="panel-back-btn" id="btn-back-to-works" aria-label="作品一覧に戻る">
-              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="19" y1="12" x2="5" y2="12"></line>
-                <polyline points="12 19 5 12 12 5"></polyline>
-              </svg>
-              <span id="btn-back-works-label">WORKS LIST</span>
-            </button>
-          </div>
-
-          <!-- Active Work Header Card with Like & Comment Buttons -->
-          <div class="active-work-summary-card">
-            <div class="work-summary-top">
-              <h3 class="work-summary-title" id="active-work-title">Work Title</h3>
-              <div class="work-action-group">
-                <!-- Like Button -->
-                <button id="work-like-btn" class="action-pill-btn" aria-label="いいね">
-                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path>
-                  </svg>
-                  <span id="work-like-count">0</span>
-                </button>
-
-                <!-- Comment Button -->
-                <button id="work-comment-btn" class="action-pill-btn" aria-label="コメントを見る">
-                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                  </svg>
-                  <span id="work-comment-count">0</span>
-                </button>
-
-                <div class="work-photos-count-badge" id="active-work-photos-count">0 Photos</div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Thumbnails Grid inside the Work -->
-          <div class="section-sub-heading">
-            <span>PHOTOS IN WORK</span>
-            <span class="sub-hint">タップで大画面切替</span>
-          </div>
-          <div class="photos-thumbnails-grid" id="photos-thumbnails-grid">
-            <!-- Injected by Client JS -->
-          </div>
-
-          <!-- Patreon Banner in Detail -->
-          <div class="mt-8 mb-4 p-5 bg-gradient-to-br from-rose-500/10 to-rose-500/5 border border-rose-500/20 rounded-2xl flex flex-col items-center justify-center text-center gap-3 relative overflow-hidden group">
-            <p class="text-white/90 font-light text-xs sm:text-sm tracking-wide relative z-10">もっと高解像度・限定写真が見たい方は<br/>Patreonをチェックしてね❤</p>
-            <a href="https://www.patreon.com/cw/u73055670?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_creator&utm_content=copyLink" target="_blank" rel="noopener noreferrer" class="relative z-10 inline-flex items-center gap-2 bg-rose-500 hover:bg-rose-600 text-white px-5 py-2 rounded-full text-xs sm:text-sm font-medium transition-all duration-300 shadow-[0_4px_16px_rgba(244,63,94,0.4)]">
-              <span>View on Patreon</span>
-              <span>→</span>
-            </a>
-          </div>
-
-        </div>
-
-      </aside>
-
-    </main>
-
-    <!-- FLOATING CHARACTER SWITCHER DOCK (Tier 2 & 3) -->
-    <nav id="character-floating-dock" class="character-floating-dock" aria-label="クイック・キャラクター切り替え">
-      <div class="dock-inner" id="dock-inner">
-        <!-- Injected by Client JS -->
-      </div>
-    </nav>
-
-    <!-- CINEMATIC FULLSCREEN LIGHTBOX MODAL -->
-    <dialog id="cinematic-modal" class="cinematic-lightbox" aria-modal="true" aria-label="高精細写真全画面ビュー">
-      <div class="modal-backdrop-blur" id="modal-backdrop-blur"></div>
-      <div class="modal-content-shell">
-        
-        <!-- Top Utility Bar -->
-        <div class="modal-top-bar">
-          <div class="modal-photo-meta">
-            <span class="modal-cat-badge" id="modal-cat-badge">PHOTO</span>
-            <h2 class="modal-photo-title" id="modal-photo-title">Title</h2>
-            <span class="modal-photo-model" id="modal-photo-model">Model</span>
-          </div>
-
-          <div class="modal-actions">
-            <!-- Modal Like Button -->
-            <button id="modal-like-btn" class="modal-btn" aria-label="いいね">
-              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path>
-              </svg>
-            </button>
-            <!-- Modal Comment Button -->
-            <button id="modal-comment-btn" class="modal-btn" aria-label="コメント">
-              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-              </svg>
-            </button>
-            <button id="modal-prev-btn" class="modal-btn" aria-label="前の写真 (←)">
-              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="15 18 9 12 15 6"></polyline>
-              </svg>
-            </button>
-            <button id="modal-next-btn" class="modal-btn" aria-label="次の写真 (→)">
-              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="9 18 15 12 9 6"></polyline>
-              </svg>
-            </button>
-            <button id="modal-close-btn" class="modal-btn close-btn" aria-label="閉じる (Esc)">
-              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18"></line>
-                <line x1="6" y1="6" x2="18" y2="18"></line>
-              </svg>
-            </button>
-          </div>
-        </div>
-
-        <!-- Main Photo Display Area -->
-        <div class="modal-main-stage" id="modal-main-stage">
-          <div class="modal-image-holder" id="modal-image-holder">
-            <img id="modal-img" src="" alt="Expanded Photography" class="modal-highres-img">
-          </div>
-
-          <!-- Swipe Hint Overlay -->
-          <div id="modal-swipe-hint" class="modal-swipe-hint" style="display: none;">
-            <div class="swipe-hint-pill">
-              <span class="swipe-arrow swipe-arrow-left">‹</span>
-              <span class="swipe-hand-icon">👆</span>
-              <span class="swipe-arrow swipe-arrow-right">›</span>
-              <span class="swipe-hint-text">スワイプで写真送り</span>
-            </div>
-          </div>
-        </div>
-
-      </div>
-    </dialog>
-
-    <!-- COMMENTS MODAL / DRAWER -->
-    <dialog id="comment-modal" aria-labelledby="comment-modal-title" class="bg-transparent m-auto p-0 w-full h-full max-w-md backdrop:bg-black/80 overflow-hidden outline-none z-[300] overscroll-contain">
-      <div class="bg-[#121218] rounded-3xl border border-white/10 shadow-2xl flex flex-col h-[82vh] max-h-[720px] w-[92%] max-w-sm mx-auto mt-[9vh] overflow-hidden transform scale-95 opacity-0 transition-all duration-300" id="comment-modal-content">
-        <div class="p-4 px-6 border-b border-white/5 flex justify-between items-center bg-[#09090d] shrink-0">
-          <h3 id="comment-modal-title" class="text-white font-medium text-sm tracking-wide">Comments <span class="text-gray-500 text-xs ml-2" id="modal-comment-count">0</span></h3>
-          <button id="btn-close-comment-modal" class="text-gray-400 hover:text-white outline-none transition-colors p-1" aria-label="閉じる">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-          </button>
-        </div>
-        
-        <div class="flex-1 overflow-y-auto p-5 space-y-4 scroll-smooth overscroll-contain" id="comment-list" aria-live="polite">
-          <p class="text-gray-500 font-light text-center py-10">まだコメントはありません。<br/>最初のコメントを投稿しよう！</p>
-        </div>
-
-        <div class="p-4 border-t border-white/5 bg-[#09090d] shrink-0 relative pb-[calc(1rem+env(safe-area-inset-bottom))]">
-          <div id="reply-indicator" class="hidden absolute top-0 left-4 -translate-y-[calc(100%-1px)] bg-[#121218] border border-white/10 border-b-0 rounded-t-xl px-4 py-1.5 items-center gap-4 z-0 text-xs shadow-lg">
-            <span class="text-gray-400 font-light"><span id="reply-indicator-name" class="text-white font-medium"></span> さんに返信中...</span>
-            <button id="btn-cancel-reply" class="text-gray-500 hover:text-rose-400 outline-none p-1" aria-label="返信をキャンセル">✕</button>
-          </div>
-
-          <div id="comment-form-wrapper" class="relative z-10 bg-[#09090d]">
-            <input type="text" id="comment-author" placeholder="名前 (任意)" aria-label="名前" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-xs mb-2 outline-none focus:border-rose-500 transition-colors font-light" />
-            <div class="flex gap-2">
-              <input type="text" id="comment-content" placeholder="コメントを入力..." aria-label="コメント" class="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-xs outline-none focus:border-rose-500 transition-colors font-light" />
-              <button type="button" id="comment-submit-btn" class="bg-rose-500/80 hover:bg-rose-500 text-white px-4 py-2 rounded-lg text-xs font-medium transition-colors outline-none shrink-0">送信</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </dialog>
-
-    <!-- ABOUT / INFO MODAL -->
-    <dialog id="info-modal" class="info-drawer-modal" aria-modal="true" aria-label="Miu's Gallery について">
-      <div class="info-drawer-inner">
-        <div class="drawer-header">
-          <h2 class="drawer-title">ABOUT MIU'S GALLERY</h2>
-          <button id="info-close-btn" class="modal-btn" aria-label="閉じる">
-            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </button>
-        </div>
-        <div class="drawer-body">
-          <p class="lead-statement">
-            「各キャラクターの作品世界」と「写真集をめくるようなシームレスな探索」。
-          </p>
-          <p>
-            Miu's Gallery は、オリジナルAIキャラクター「美羽」達の美麗な写真と世界観を、1画面内でスムーズに鑑賞できる次世代フォトギャラリーです。
-          </p>
-          <h3>HOW TO EXPLORE</h3>
-          <ul class="guide-list">
-            <li><strong>モデル選択:</strong> モデル一覧から気になるモデルをタップすると、そのモデルの作品集（Works）が展開。</li>
-            <li><strong>作品選択:</strong> 作品を選ぶと、収録写真のサムネイル一覧が表示され、大画面で鑑賞できます。</li>
-            <li><strong>写真送り:</strong> 左右矢印ボタンや、スマホの画面スワイプで同じ作品内の写真を連続してめくれます。</li>
-            <li><strong>全画面拡大:</strong> メイン写真をタップすると、高精細ズームモーダルが起動。</li>
-            <li><strong>キーボード操作:</strong> <kbd>Esc</kbd> で1階層戻る / モーダルを閉じる、<kbd>←</kbd> <kbd>→</kbd> で写真送り。</li>
-            <li><strong>ダブルタップ:</strong> 作品詳細時やモーダル内でのダブルタップでハートのいいね！が送れます。</li>
-          </ul>
-        </div>
-      </div>
-    </dialog>
-
-    <!-- Client-side Application Script -->
-    <script define:vars={{ charactersData, slidesData }}>
-      // クライアントサイドの状態管理
-      window.__CHARACTERS_DATA__ = charactersData;
-      window.__SLIDES_DATA__ = slidesData;
-    </script>
-
-    <script is:inline>
-      (function() {
-        const characters = window.__CHARACTERS_DATA__ || [];
-        const slides = window.__SLIDES_DATA__ || [];
-
-        let currentModelId = characters[0]?.id || '';
-        let currentWork = null;
-        let currentPhotosInWork = [];
-        let currentPhotoIndex = 0;
-        let currentAllPhotosFlat = [];
-
-        // 全写真フラット配列の作成（全画面モーダル用）
-        characters.forEach(c => {
-          c.works.forEach(w => {
-            w.photos.forEach(p => currentAllPhotosFlat.push(p));
-          });
-        });
-
-        // ヒーロースライダー状態
-        let isHeroSliderActive = true;
-        let heroSliderTimer = null;
-        let heroCurrentIndex = 0;
-
-        // モーダル状態
-        let modalFilteredList = currentAllPhotosFlat;
-        let modalCurrentIndex = 0;
-        let currentScale = 1;
-        let currentPanX = 0;
-        let currentPanY = 0;
-        let isPinching = false;
-        let isPanning = false;
-        let startPinchDist = 0;
-        let startScale = 1;
-        let touchStartX = 0;
-        let touchStartY = 0;
-        let startPanX = 0;
-        let startPanY = 0;
-        let lastTapTime = 0;
-
-        // コメント返信状態
-        let activeReplyId = 0;
-
-        // --- DOM Elements ---
-        const stageImg = document.getElementById('main-stage-img');
-        const stageBlurImg = document.getElementById('stage-blur-img');
-        const stageTitle = document.getElementById('stage-char-name');
-        const stageDots = document.getElementById('stage-slider-dots');
-        const floatingDock = document.getElementById('character-floating-dock');
-        const dockInner = document.getElementById('dock-inner');
-        const sidePanel = document.getElementById('side-content-panel');
-
-        const viewChars = document.getElementById('view-characters');
-        const viewWorks = document.getElementById('view-works');
-        const viewPhotos = document.getElementById('view-photos');
-
-        const cinematicModal = document.getElementById('cinematic-modal');
-        const modalImg = document.getElementById('modal-img');
-        const modalTitle = document.getElementById('modal-photo-title');
-        const modalModel = document.getElementById('modal-photo-model');
-        const modalBadge = document.getElementById('modal-cat-badge');
-        const imageHolder = document.getElementById('modal-image-holder');
-        const modalSwipeHint = document.getElementById('modal-swipe-hint');
-
-        const commentModal = document.getElementById('comment-modal');
-        const commentModalContent = document.getElementById('comment-modal-content');
-        const commentList = document.getElementById('comment-list');
-        const commentAuthorInput = document.getElementById('comment-author');
-        const commentContentInput = document.getElementById('comment-content');
-        const commentSubmitBtn = document.getElementById('comment-submit-btn');
-
-        const infoModal = document.getElementById('info-modal');
-
-        // ============================================================
-        // 1. DYNAMIC COLOR MORPHING
-        // ============================================================
-        function morphColor(hex, rgb) {
-          const root = document.documentElement;
-          root.style.setProperty('--char-accent', hex);
-          root.style.setProperty('--char-rgb', rgb);
-          root.style.setProperty('--char-glow', `rgba(${rgb}, 0.35)`);
-        }
-
-        // ============================================================
-        // 2. HERO SLIDER
-        // ============================================================
-        function startHeroSlider() {
-          isHeroSliderActive = true;
-          document.body.classList.remove('is-subpage', 'is-photos-view');
-          if (stageDots) stageDots.classList.add('active');
-          if (floatingDock) floatingDock.classList.remove('visible');
-          if (sidePanel) sidePanel.classList.remove('has-floating-dock');
-
-          if (heroSliderTimer) clearInterval(heroSliderTimer);
-          updateHeroSlide(heroCurrentIndex);
-
-          if (slides.length > 1) {
-            heroSliderTimer = setInterval(() => {
-              if (!isHeroSliderActive) return;
-              heroCurrentIndex = (heroCurrentIndex + 1) % slides.length;
-              updateHeroSlide(heroCurrentIndex);
-            }, 4500);
+  <!-- OneSignal -->
+  <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+  <script is:inline>
+    window.OneSignalDeferred = window.OneSignalDeferred || [];
+    OneSignalDeferred.push(async function(OneSignal) {
+      await OneSignal.init({
+        appId: "06418ce1-102a-4a7b-a88b-069b594cf919",
+        promptOptions: {
+          slidedown: {
+            prompts: [
+              {
+                type: "push",
+                autoPrompt: true,
+                text: {
+                  actionMessage: "新しいギャラリーが追加されたら通知を受け取りますか？",
+                  acceptButton: "受け取る",
+                  cancelButton: "あとで",
+                },
+                delay: {
+                  pageViews: 1,
+                  timeDelay: 5 
+                }
+              }
+            ]
           }
         }
+      });
+    });
+  </script>
 
-        function stopHeroSlider() {
-          isHeroSliderActive = false;
-          if (heroSliderTimer) clearInterval(heroSliderTimer);
-          if (stageDots) stageDots.classList.remove('active');
-        }
+  <!-- Schema.org JSON-LD -->
+  <script type="application/ld+json" set:html={JSON.stringify(schemaLD)} />
 
-        function updateHeroSlide(index) {
-          const slide = slides[index];
-          if (!slide) return;
-          if (stageImg) stageImg.src = slide.image;
-          if (stageBlurImg) stageBlurImg.src = slide.image;
-          if (stageTitle) stageTitle.textContent = slide.title || "Miu's Gallery";
-          morphColor(slide.color, slide.rgb);
+  <script define:vars={{ wpGraphqlUrl }}>
+    window.WP_GRAPHQL_URL = wpGraphqlUrl;
+  </script>
+</head>
+<body class="bg-base text-slate-100 selection:bg-rose-500 selection:text-white">
 
-          // Update dots
-          const dots = document.querySelectorAll('.slider-dot');
-          dots.forEach((dot, idx) => {
-            if (idx === index) dot.classList.add('active');
-            else dot.classList.remove('active');
-          });
-        }
+  <!-- Lightweight Dynamic Ambient Background (GPU Accelerated) -->
+  <div id="ambient-aura-layer" class="ambient-aura-layer" aria-hidden="true"></div>
 
-        // ============================================================
-        // 3. 3-TIER NAVIGATION & RENDERING
-        // ============================================================
-        function switchPanelView(viewId) {
-          [viewChars, viewWorks, viewPhotos].forEach(view => {
-            if (!view) return;
-            if (view.id === viewId) {
-              view.classList.add('active');
-              view.scrollTop = 0;
-            } else {
-              view.classList.remove('active');
-            }
-          });
+  <!-- Interactive Custom Cursor (PC fine pointer only) -->
+  <div id="custom-cursor" class="custom-cursor" aria-hidden="true">
+    <div class="cursor-dot"></div>
+    <div class="cursor-ring"></div>
+    <span class="cursor-label">EXPAND</span>
+  </div>
 
-          const isSubpage = (viewId === 'view-works' || viewId === 'view-photos');
-          const isPhotosView = (viewId === 'view-photos');
+  <!-- Floating Top Bar: Logo, Social Links & About Button -->
+  <div class="floating-top-bar" id="floating-top-bar">
+    <div class="floating-brand-group">
+      <a href="#" class="floating-brand-logo" id="brand-home-link" aria-label="Miu's Gallery Home">
+        <span class="brand-sym">✦</span>
+        <span class="brand-text">Miu's <span class="brand-sub">Gallery</span></span>
+      </a>
 
-          document.body.classList.toggle('is-subpage', isSubpage);
-          document.body.classList.toggle('is-photos-view', isPhotosView);
+      <div class="floating-social-links">
+        <!-- Instagram -->
+        <a href="https://www.instagram.com/xx.ai.girls.miu0402/" target="_blank" rel="noopener noreferrer" class="social-icon-btn instagram-btn" aria-label="Instagram">
+          <svg class="social-svg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
+            <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
+            <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
+          </svg>
+        </a>
 
-          if (floatingDock) floatingDock.classList.toggle('visible', isSubpage);
-          if (sidePanel) sidePanel.classList.toggle('has-floating-dock', isSubpage);
-        }
+        <!-- Patreon -->
+        <a href="https://www.patreon.com/cw/u73055670?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_creator&utm_content=copyLink" target="_blank" rel="noopener noreferrer" class="social-icon-btn patreon-btn" aria-label="Patreon">
+          <svg class="social-svg-icon patreon-new-logo" viewBox="0 0 1080 1080" fill="currentColor" aria-hidden="true">
+            <path d="M1033.05,324.45c-0.19-137.9-107.59-250.92-233.6-291.7c-156.48-50.64-362.86-43.3-512.28,27.2 C106.07,145.41,49.18,332.61,47.06,519.31c-1.74,153.5,13.58,557.79,241.62,560.67c169.44,2.15,194.67-216.18,273.07-321.33 c55.78-74.81,127.6-95.94,216.01-117.82C929.71,603.22,1033.27,483.3,1033.05,324.45z"></path>
+          </svg>
+        </a>
 
-        // TIER 1: CHARACTERS VIEW
-        function renderCharactersView() {
-          const container = document.getElementById('characters-grid-list');
-          if (!container) return;
+        <!-- About Modal Open Button -->
+        <button id="info-open-btn" class="social-icon-btn" aria-label="ギャラリーについて">
+          <svg class="social-svg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="16" x2="12" y2="12"></line>
+            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
 
-          container.innerHTML = characters.map(c => `
-            <button class="char-select-card" data-char-id="${c.id}" aria-label="${c.name} の作品アルバムを見る">
+  <!-- ============================================================
+       APP MAIN: 100dvh VIEWPORT APP
+       PC: Left (70%) Main Visual + Right (30%) 3-Tier Navigation Panel
+       Mobile: Top Main Visual + Bottom Interactive Deck
+       ============================================================ -->
+  <main class="app-viewport-container">
+
+    <!-- LEFT / TOP PANE: DYNAMIC MAIN VISUAL STAGE -->
+    <section class="main-visual-stage" id="main-visual-stage" aria-label="メイン写真ビュー">
+      
+      <!-- Background Ambient Blur Image Layer -->
+      <div class="stage-blur-layer" id="stage-blur-layer">
+        <img id="stage-blur-img" src={heroSliderList[0]?.image || placeholderImg} alt="" aria-hidden="true">
+      </div>
+
+      <!-- Main High-Res Photo Container (Click to expand) -->
+      <div class="stage-photo-wrapper tilt-element" id="stage-photo-wrapper" data-tilt-intensity="6">
+        <img id="main-stage-img" src={heroSliderList[0]?.image || placeholderImg} alt="Featured Photo" class="main-stage-photo" fetchpriority="high">
+        
+        <!-- Expand Prompt Overlay -->
+        <div class="photo-expand-prompt">
+          <span class="prompt-pill">
+            <i data-lucide="maximize-2" class="w-3.5 h-3.5"></i>
+            <span class="pc-text">CLICK TO EXPAND</span>
+            <span class="sp-text">TAP TO EXPAND</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- Character Name Glassmorphic Badge Capsule -->
+      <div class="stage-title-overlay" id="stage-title-overlay">
+        <div class="stage-char-badge" id="stage-char-badge">
+          <span class="stage-color-chip" id="stage-color-chip" style={`background-color: ${heroSliderList[0]?.color || '#0b0b0b'};`}></span>
+          <h1 class="stage-badge-text" id="stage-badge-name">{getRomajiName(heroSliderList[0]?.modelName || "美羽 / Miu", heroSliderList[0]?.characterId)}</h1>
+        </div>
+      </div>
+
+      <!-- Stage Slider Dots (トップページ自動スライダー時のインジケーター) -->
+      <div class="stage-slider-dots active" id="stage-slider-dots" aria-hidden="true"></div>
+
+    </section>
+
+    <!-- RIGHT / BOTTOM PANE: 3-TIER CONTENT & NAVIGATION PANEL -->
+    <aside class="side-content-panel" id="side-content-panel" aria-label="モデル＆作品ナビゲーション">
+      
+      <!-- TIER 1: CHARACTERS LIST (Initial State) -->
+      <div class="panel-view-section active" id="view-characters">
+        <div class="panel-view-header">
+          <div>
+            <h2 class="panel-heading">MODELS & CHARACTERS</h2>
+            <p class="panel-subtext">モデルを選択して作品アルバムへ</p>
+          </div>
+        </div>
+
+        <div class="characters-grid-list" id="characters-grid-list">
+          {formattedGalleryData.map((c: any) => (
+            <button class="char-select-card" data-char-id={c.id} aria-label={`${c.name} の作品アルバムを見る`}>
               <div class="char-card-media">
-                <img src="${c.avatar}" alt="${c.name}" loading="lazy">
-                <div class="char-card-color-overlay" style="background-color: ${c.color};"></div>
+                <img src={c.avatar} alt={c.name} loading="lazy" referrerpolicy="no-referrer">
+                <div class="char-card-color-overlay" style={`background-color: ${c.color};`}></div>
               </div>
               <div class="char-card-caption">
-                <div class="char-card-name">${c.name}</div>
-                <div class="char-card-works-count">${c.works.length} Works</div>
+                <div class="char-card-name" set:html={formatTitleHtml(c.name)}></div>
+                <div class="char-card-works-count">{c.works.length} Works</div>
               </div>
             </button>
-          `).join('');
+          ))}
+        </div>
+      </div>
 
-          container.querySelectorAll('.char-select-card').forEach(card => {
-            card.addEventListener('click', () => {
-              const cid = card.getAttribute('data-char-id');
-              showWorksView(cid);
-            });
-          });
+      <!-- TIER 2: WORKS LIST OF SELECTED MODEL -->
+      <div class="panel-view-section" id="view-works">
+        
+        <!-- Back Navigation to Models -->
+        <div class="panel-nav-bar">
+          <button class="panel-back-btn" id="btn-back-to-characters" aria-label="モデル一覧に戻る">
+            <i data-lucide="arrow-left" class="w-4 h-4"></i>
+            <span>MODELS & CHARACTERS</span>
+          </button>
+        </div>
+
+        <!-- Selected Model Header Summary Card -->
+        <div class="active-model-card" id="active-model-summary">
+          <div class="model-card-top">
+            <div class="model-avatar-circle">
+              <img id="active-model-avatar" src={formattedGalleryData[0]?.avatar} alt="Model Avatar">
+            </div>
+            <div class="model-text-meta">
+              <h3 class="model-card-name" id="active-model-name" set:html={formatTitleHtml(formattedGalleryData[0]?.name)}></h3>
+            </div>
+            <div class="model-works-count-pill" id="active-model-works-count">0 Works</div>
+          </div>
+          <div class="model-bio-section" id="active-model-bio-section">
+            <div class="model-card-bio" id="active-model-bio" set:html={formattedGalleryData[0]?.bio || ''}></div>
+          </div>
+        </div>
+
+        <!-- Works / Albums List -->
+        <div class="section-sub-heading">
+          <span>WORKS & ALBUMS</span>
+          <span class="sub-hint">作品を選択</span>
+        </div>
+        <div class="works-albums-list" id="works-albums-list">
+          <!-- Injected dynamically by JS -->
+        </div>
+
+      </div>
+
+      <!-- TIER 3: PHOTOS THUMBNAIL GRID (Inside Selected Work) -->
+      <div class="panel-view-section" id="view-photos">
+        
+        <!-- Back Navigation to Works List -->
+        <div class="panel-nav-bar">
+          <button class="panel-back-btn" id="btn-back-to-works" aria-label="作品一覧に戻る">
+            <i data-lucide="arrow-left" class="w-4 h-4"></i>
+            <span id="btn-back-works-label">WORKS LIST</span>
+          </button>
+        </div>
+
+        <!-- Active Work Header Card with Like & Comment Buttons -->
+        <div class="active-work-summary-card">
+          <div class="work-summary-top">
+            <h3 class="work-summary-title" id="active-work-title">Work Title</h3>
+            <div class="work-action-group">
+              <!-- Like Button -->
+              <button id="work-like-btn" class="action-pill-btn" aria-label="いいね">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path>
+                </svg>
+                <span id="work-like-count">0</span>
+              </button>
+
+              <!-- Comment Button -->
+              <button id="work-comment-btn" class="action-pill-btn" aria-label="コメントを見る">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                </svg>
+                <span id="work-comment-count">0</span>
+              </button>
+
+              <div class="work-photos-count-badge" id="active-work-photos-count">0 Photos</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Thumbnails Grid inside the Work -->
+        <div class="section-sub-heading">
+          <span>PHOTOS IN WORK</span>
+          <span class="sub-hint">タップで大画面切替</span>
+        </div>
+        <div class="photos-thumbnails-grid" id="photos-thumbnails-grid">
+          <!-- Injected dynamically by JS -->
+        </div>
+
+        <!-- Patreon Banner in Detail View -->
+        <a href="https://www.patreon.com/cw/u73055670?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_creator&utm_content=copyLink" target="_blank" rel="noopener noreferrer" class="patreon-detail-banner" aria-label="Patreonで限定作品を見る">
+          <div class="flex items-center gap-2.5">
+            <svg class="w-5 h-5 text-[#ff424d] fill-current shrink-0" viewBox="0 0 1080 1080">
+              <path d="M1033.05,324.45c-0.19-137.9-107.59-250.92-233.6-291.7c-156.48-50.64-362.86-43.3-512.28,27.2 C106.07,145.41,49.18,332.61,47.06,519.31c-1.74,153.5,13.58,557.79,241.62,560.67c169.44,2.15,194.67-216.18,273.07-321.33 c55.78-74.81,127.6-95.94,216.01-117.82C929.71,603.22,1033.27,483.3,1033.05,324.45z"></path>
+            </svg>
+            <div>
+              <div class="text-white text-xs font-medium">Patreon Exclusive Collection</div>
+              <div class="text-gray-400 text-[10px]">高解像度・未公開カットをPatreonで公開中</div>
+            </div>
+          </div>
+          <span class="text-[#ff424d] text-xs font-semibold shrink-0">JOIN →</span>
+        </a>
+
+      </div>
+
+    </aside>
+
+  </main>
+
+  <!-- FLOATING CHARACTER SWITCHER DOCK (Tier 2 & Tier 3) -->
+  <nav id="character-floating-dock" class="character-floating-dock" aria-label="クイック・キャラクター切り替え">
+    <div class="dock-inner" id="dock-inner">
+      <!-- Injected dynamically by JS -->
+    </div>
+  </nav>
+
+  <!-- CINEMATIC FULLSCREEN LIGHTBOX MODAL -->
+  <dialog id="cinematic-modal" class="cinematic-lightbox" aria-modal="true" aria-label="高精細写真全画面ビュー">
+    <div class="modal-backdrop-blur" id="modal-backdrop-blur"></div>
+    <div class="modal-content-shell">
+      
+      <!-- Top Utility Bar -->
+      <div class="modal-top-bar">
+        <div class="modal-photo-meta">
+          <span class="modal-cat-badge" id="modal-cat-badge">PERSONA</span>
+          <h2 class="modal-photo-title" id="modal-photo-title">Title</h2>
+          <span class="modal-photo-model" id="modal-photo-model">Model</span>
+        </div>
+
+        <div class="modal-actions">
+          <!-- Modal Like Button -->
+          <button id="modal-like-btn" class="modal-btn" aria-label="いいね">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path>
+            </svg>
+          </button>
+          <!-- Modal Comment Button -->
+          <button id="modal-comment-btn" class="modal-btn" aria-label="コメント">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+            </svg>
+          </button>
+          <button id="modal-prev-btn" class="modal-btn" aria-label="前の写真 (←)">
+            <i data-lucide="chevron-left" class="w-5 h-5"></i>
+          </button>
+          <button id="modal-next-btn" class="modal-btn" aria-label="次の写真 (→)">
+            <i data-lucide="chevron-right" class="w-5 h-5"></i>
+          </button>
+          <button id="modal-close-btn" class="modal-btn close-btn" aria-label="閉じる (Esc)">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Main Photo Display Area -->
+      <div class="modal-main-stage" id="modal-main-stage">
+        <div class="modal-image-holder" id="modal-image-holder">
+          <img id="modal-img" src="" alt="Expanded Photography" class="modal-highres-img">
+        </div>
+
+        <!-- First-Time Swipe Hint Overlay -->
+        <div id="modal-swipe-hint" class="modal-swipe-hint" style="display: none;">
+          <div class="swipe-hint-pill">
+            <span class="swipe-arrow swipe-arrow-left">‹</span>
+            <span class="swipe-hand-icon">👆</span>
+            <span class="swipe-arrow swipe-arrow-right">›</span>
+            <span class="swipe-hint-text">スワイプで写真送り</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </dialog>
+
+  <!-- COMMENTS MODAL / DRAWER -->
+  <dialog id="comment-modal" aria-labelledby="comment-modal-title" class="bg-transparent m-auto p-0 w-full h-full max-w-md backdrop:bg-black/80 overflow-hidden outline-none z-[300] overscroll-contain">
+    <div class="bg-[#121218] rounded-3xl border border-white/10 shadow-2xl flex flex-col h-[82vh] max-h-[720px] w-[92%] max-w-sm mx-auto mt-[9vh] overflow-hidden transform scale-95 opacity-0 transition-all duration-300" id="comment-modal-content">
+      <div class="p-4 px-6 border-b border-white/5 flex justify-between items-center bg-[#09090d] shrink-0">
+        <h3 id="comment-modal-title" class="text-white font-medium text-sm tracking-wide">Comments <span class="text-gray-500 text-xs ml-2" id="modal-comment-count">0</span></h3>
+        <button id="btn-close-comment-modal" class="text-gray-400 hover:text-white outline-none transition-colors p-1" aria-label="閉じる">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+      </div>
+      
+      <div class="flex-1 overflow-y-auto p-5 space-y-4 scroll-smooth overscroll-contain" id="comment-list" aria-live="polite">
+        <p class="text-gray-500 font-light text-center py-10">まだコメントはありません。<br/>最初のコメントを投稿しよう！</p>
+      </div>
+
+      <div class="p-4 border-t border-white/5 bg-[#09090d] shrink-0 relative pb-[calc(1rem+env(safe-area-inset-bottom))]">
+        <div id="reply-indicator" class="hidden absolute top-0 left-4 -translate-y-[calc(100%-1px)] bg-[#121218] border border-white/10 border-b-0 rounded-t-xl px-4 py-1.5 items-center gap-4 z-0 text-xs shadow-lg">
+          <span class="text-gray-400 font-light"><span id="reply-indicator-name" class="text-white font-medium"></span> さんに返信中...</span>
+          <button id="btn-cancel-reply" class="text-gray-500 hover:text-rose-400 outline-none p-1" aria-label="返信をキャンセル">✕</button>
+        </div>
+
+        <div id="comment-form-wrapper" class="relative z-10 bg-[#09090d]">
+          <input type="text" id="comment-author" placeholder="名前 (任意)" aria-label="名前" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-xs mb-2 outline-none focus:border-rose-500 transition-colors font-light" />
+          <div class="flex gap-2">
+            <input type="text" id="comment-content" placeholder="コメントを入力..." aria-label="コメント" class="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-xs outline-none focus:border-rose-500 transition-colors font-light" />
+            <button type="button" id="comment-submit-btn" class="bg-rose-500/80 hover:bg-rose-500 text-white px-4 py-2 rounded-lg text-xs font-medium transition-colors outline-none shrink-0">送信</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- ABOUT / INFO MODAL -->
+  <dialog id="info-modal" class="info-drawer-modal" aria-modal="true" aria-label="Miu's Gallery について">
+    <div class="info-drawer-inner">
+      <div class="drawer-header">
+        <h2 class="drawer-title">ABOUT MIU'S GALLERY</h2>
+        <button id="info-close-btn" class="modal-btn" aria-label="閉じる">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <div class="drawer-body">
+        <p class="lead-statement">
+          「各キャラクターの作品世界」と「写真集をめくるようなシームレスな探索」。
+        </p>
+        <p>
+          Miu's Gallery は、各モデルが紡ぎ出す複数の作品（Works）と、それぞれの作品に収められた複数枚の高精細写真（Photos）を、1画面内でスムーズに鑑賞できるフォトアーカイブです。
+        </p>
+        <h3 style="margin-top: 1.25rem; font-size: 0.95rem; font-weight: 700; color: #fff;">HOW TO EXPLORE</h3>
+        <ul class="guide-list">
+          <li><strong>モデル選択:</strong> モデル一覧から気になるモデルをタップすると、そのモデルの作品集（Works）が展開。</li>
+          <li><strong>作品選択:</strong> 作品を選ぶと、収録写真のサムネイル一覧が表示され、大画面で鑑賞できます。</li>
+          <li><strong>写真送り:</strong> 左右矢印ボタンや、スマホの画面スワイプで同じ作品内の写真を連続してめくれます。</li>
+          <li><strong>全画面拡大:</strong> メイン写真をタップすると、高精細ズームモーダルが起動。</li>
+          <li><strong>キーボード操作:</strong> <kbd>Esc</kbd> で1階層戻る / モーダルを閉じる、<kbd>←</kbd> <kbd>→</kbd> で写真送り。</li>
+        </ul>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- クライアント用データペイロード (JSON) -->
+  <script id="app-gallery-data" type="application/json" set:html={JSON.stringify({
+    galleryData: formattedGalleryData,
+    heroSliderList: heroSliderList,
+    allPhotosFlat: allPhotosFlat
+  })} />
+
+  <!-- APP CLIENT-SIDE INTERACTION SCRIPT -->
+  <script is:inline>
+    (function() {
+      // データの取得
+      const dataScript = document.getElementById('app-gallery-data');
+      if (!dataScript) return;
+      const { galleryData, heroSliderList, allPhotosFlat } = JSON.parse(dataScript.textContent);
+
+      // アプリケーション状態
+      let currentModelId = galleryData[0]?.id || '';
+      let currentWorkId = galleryData[0]?.works?.[0]?.id || '';
+      let currentWork = galleryData[0]?.works?.[0] || null;
+      let currentPhotosInWork = [];
+      let currentPhotoIndex = 0;
+
+      let isHeroSliderActive = false;
+      let heroSliderIndex = 0;
+      let heroSliderTimer = null;
+
+      // モーダル・ズーム・ジェスチャー状態
+      let modalPhotoIndex = 0;
+      let modalFilteredList = [...allPhotosFlat];
+      let currentScale = 1;
+      let currentPanX = 0;
+      let currentPanY = 0;
+      let startPinchDist = 0;
+      let startScale = 1;
+      let touchStartX = 0;
+      let touchStartY = 0;
+      let startPanX = 0;
+      let startPanY = 0;
+      let isPinching = false;
+      let isPanning = false;
+      let lastTapTime = 0;
+      let swipeHintTimeout = null;
+
+      // コメント関連状態
+      let activeReplyId = 0;
+      const commentModal = document.getElementById('comment-modal');
+      const commentModalContent = document.getElementById('comment-modal-content');
+      const commentList = document.getElementById('comment-list');
+      const commentAuthorInput = document.getElementById('comment-author');
+      const commentContentInput = document.getElementById('comment-content');
+      const commentSubmitBtn = document.getElementById('comment-submit-btn');
+
+      // DOM 要素
+      const modal = document.getElementById('cinematic-modal');
+      const modalImg = document.getElementById('modal-img');
+      const modalTitle = document.getElementById('modal-photo-title');
+      const modalModel = document.getElementById('modal-photo-model');
+      const modalBadge = document.getElementById('modal-cat-badge');
+      const modalCloseBtn = document.getElementById('modal-close-btn');
+      const modalNextBtn = document.getElementById('modal-next-btn');
+      const modalPrevBtn = document.getElementById('modal-prev-btn');
+      const modalBackdrop = document.getElementById('modal-backdrop-blur');
+      const swipeHintEl = document.getElementById('modal-swipe-hint');
+      const imageHolder = document.getElementById('modal-image-holder');
+
+      function formatTitleHtml(displayName) {
+        if (!displayName) return '';
+        if (displayName.includes(' / ')) {
+          const parts = displayName.split(' / ');
+          return `<span class="char-kanji">${parts[0]}</span><span class="char-divider">/</span><span class="char-romaji">${parts[1]}</span>`;
         }
+        return `<span class="char-kanji">${displayName}</span>`;
+      }
 
-        function showCharactersView() {
-          switchPanelView('view-characters');
-          startHeroSlider();
+      const clientCharNameMap = {
+        "美羽": "Miu",
+        "美夜": "Miya",
+        "美姫": "Miki",
+        "美桜": "Mio",
+        "美空": "Miku",
+        "美玖": "Miku",
+        "美英": "Miei",
+        "美詠": "Miei",
+        "美香": "Mika",
+        "美華": "Mika",
+        "美緑": "Midori",
+        "美鳥": "Midori",
+        "未来": "Mirai",
+        "美莱": "Mirai",
+        "美柚": "Miyuzu",
+        "美ゆず": "Miyuzu",
+        "美登": "Mito",
+        "美豊": "Mito",
+        "雪": "Yuki",
+        "ユキ": "Yuki"
+      };
+
+      const clientSlugNameMap = {
+        "miu": "Miu",
+        "miya": "Miya",
+        "miki": "Miki",
+        "mio": "Mio",
+        "miku": "Miku",
+        "miei": "Miei",
+        "mika": "Mika",
+        "midori": "Midori",
+        "mirai": "Mirai",
+        "miyuzu": "Miyuzu",
+        "mito": "Mito",
+        "yuki": "Yuki"
+      };
+
+      function getRomajiName(displayName, slug) {
+        if (!displayName) return 'Miu';
+        if (displayName.includes(' / ')) {
+          return displayName.split(' / ')[1].trim();
         }
+        const clean = displayName.trim();
+        if (clientCharNameMap[clean]) {
+          return clientCharNameMap[clean];
+        }
+        const lower = clean.toLowerCase();
+        if (clientSlugNameMap[lower]) {
+          return clientSlugNameMap[lower];
+        }
+        if (slug && clientSlugNameMap[slug.toLowerCase()]) {
+          return clientSlugNameMap[slug.toLowerCase()];
+        }
+        if (slug && slug !== 'featured') {
+          return slug.charAt(0).toUpperCase() + slug.slice(1).toLowerCase();
+        }
+        return clean.charAt(0).toUpperCase() + clean.slice(1);
+      }
 
-        // TIER 2: WORKS VIEW OF SELECTED MODEL
-        function showWorksView(modelId) {
-          stopHeroSlider();
-          currentModelId = modelId;
-          const model = characters.find(c => c.id === modelId) || characters[0];
-          if (!model) return;
+      function initApp() {
+        bindCharactersViewEvents();
+        initFloatingDock();
+        initStageControls();
+        initModal();
+        initCustomCursor();
+        init3DTilt();
+        initKeyboardShortcuts();
+        initAboutModal();
+        initLikesAndComments();
 
-          morphColor(model.color, model.rgb);
-          switchPanelView('view-works');
-          updateFloatingDockActive(modelId);
+        // 初期表示: ホーム画面（Hero Slider開始）
+        showCharactersView();
 
-          // Header summary
-          const avatar = document.getElementById('active-model-avatar');
-          const name = document.getElementById('active-model-name');
-          const count = document.getElementById('active-model-works-count');
-          const bio = document.getElementById('active-model-bio');
-          if (avatar) avatar.src = model.avatar;
-          if (name) name.textContent = model.name;
-          if (count) count.textContent = `${model.works.length} Works`;
-          if (bio) {
-            if (model.bio) {
-              bio.innerHTML = model.bio;
-              bio.classList.remove('hidden');
-            } else {
-              bio.classList.add('hidden');
+        // PC: メインビジュアル上でホイールした際にサイドパネルをスクロール
+        const stage = document.getElementById('main-visual-stage');
+        stage?.addEventListener('wheel', (e) => {
+          if (window.innerWidth > 960) {
+            const activePanel = document.querySelector('.panel-view-section.active');
+            if (activePanel) {
+              activePanel.scrollTop += e.deltaY;
             }
           }
+        }, { passive: true });
 
-          // Main stage display: Model's first artwork cover
-          const firstWork = model.works[0];
-          const displayImg = firstWork ? firstWork.coverImage : model.avatar;
-          if (stageImg) stageImg.src = displayImg;
-          if (stageBlurImg) stageBlurImg.src = displayImg;
-          if (stageTitle) stageTitle.textContent = model.name;
+        // ブランドロゴクリックでトップ（モデル一覧）へ戻る
+        document.getElementById('brand-home-link')?.addEventListener('click', (e) => {
+          e.preventDefault();
+          showCharactersView();
+        });
 
-          // Render Works List (Matches style.css .work-album-card)
-          const worksContainer = document.getElementById('works-albums-list');
-          if (worksContainer) {
-            worksContainer.innerHTML = model.works.map(w => `
-              <button class="work-album-card" data-work-id="${w.id}" aria-label="${w.title} の写真を閲覧">
-                <div class="work-album-cover">
-                  <img src="${w.coverImage}" alt="${w.title}" loading="lazy">
-                </div>
-                <div class="work-album-info">
-                  <h4 class="work-album-title">${w.title}</h4>
-                  <div class="work-album-meta">
-                    <span class="work-photos-badge">${w.photos.length} Photos</span>
-                  </div>
-                </div>
-              </button>
-            `).join('');
+        // 戻るボタン
+        document.getElementById('btn-back-to-characters')?.addEventListener('click', () => {
+          showCharactersView();
+        });
 
-            worksContainer.querySelectorAll('.work-album-card').forEach(card => {
-              card.addEventListener('click', () => {
-                const wid = card.getAttribute('data-work-id');
-                showPhotosView(wid);
-              });
-            });
+        document.getElementById('btn-back-to-works')?.addEventListener('click', () => {
+          showWorksView(currentModelId);
+        });
+
+        // メインビジュアルクリックで全画面ライトボックス展開
+        document.getElementById('stage-photo-wrapper')?.addEventListener('click', () => {
+          if (isHeroSliderActive || !document.body.classList.contains('is-subpage')) {
+            return;
           }
+          const activePhoto = currentPhotosInWork[currentPhotoIndex];
+          if (activePhoto) openModal(activePhoto.id);
+        });
+
+        // Lucide Icons 再生成
+        if (window.lucide) {
+          window.lucide.createIcons();
         }
+      }
 
-        // TIER 3: PHOTOS IN SELECTED WORK
-        function showPhotosView(workId) {
-          stopHeroSlider();
-          const model = characters.find(c => c.id === currentModelId) || characters[0];
-          const work = model?.works.find(w => w.id === workId) || model?.works[0];
-          if (!work) return;
+      // ============================================================
+      // TIER 1: CHARACTERS VIEW
+      // ============================================================
+      function bindCharactersViewEvents() {
+        const container = document.getElementById('characters-grid-list');
+        if (!container) return;
 
-          currentWork = work;
-          currentPhotosInWork = work.photos || [];
-          currentPhotoIndex = 0;
-
-          switchPanelView('view-photos');
-          updateFloatingDockActive(currentModelId);
-
-          // Work header card
-          const title = document.getElementById('active-work-title');
-          const count = document.getElementById('active-work-photos-count');
-          const backLabel = document.getElementById('btn-back-works-label');
-          if (title) title.textContent = work.title;
-          if (count) count.textContent = `${currentPhotosInWork.length} Photos`;
-          if (backLabel) backLabel.textContent = `${model.name.split(' ')[0]} WORKS`;
-
-          // Like & Comments state
-          updateWorkStatsUI();
-          fetchLiveStats(work.databaseId);
-
-          // Main stage photo
-          updateStagePhoto(0);
-
-          // Render photos thumbnails grid (Matches style.css .photo-thumb-btn)
-          const grid = document.getElementById('photos-thumbnails-grid');
-          if (grid) {
-            grid.innerHTML = currentPhotosInWork.map((p, idx) => `
-              <button class="photo-thumb-btn ${idx === 0 ? 'active' : ''}" data-index="${idx}" aria-label="${p.title}">
-                <img src="${p.image}" alt="${p.title}" loading="lazy">
-                <div class="photo-thumb-caption">${p.title}</div>
-              </button>
-            `).join('');
-
-            grid.querySelectorAll('.photo-thumb-btn').forEach(btn => {
-              btn.addEventListener('click', () => {
-                const idx = parseInt(btn.getAttribute('data-index'), 10);
-                currentPhotoIndex = idx;
-                updateStagePhoto(idx);
-              });
-            });
-          }
-        }
-
-        function updateStagePhoto(index) {
-          const photo = currentPhotosInWork[index];
-          if (!photo) return;
-
-          currentPhotoIndex = index;
-          if (stageImg) stageImg.src = photo.image;
-          if (stageBlurImg) stageBlurImg.src = photo.image;
-          if (stageTitle) stageTitle.textContent = photo.workTitle || photo.title;
-
-          // Highlight thumb
-          document.querySelectorAll('.photo-thumb-btn').forEach((btn, idx) => {
-            btn.classList.toggle('active', idx === index);
+        container.querySelectorAll('.char-select-card').forEach(card => {
+          card.addEventListener('click', () => {
+            const cid = card.getAttribute('data-char-id');
+            if (cid) showWorksView(cid);
           });
+        });
+      }
+
+      function showCharactersView() {
+        switchPanelView('view-characters');
+        startHeroSlider();
+      }
+
+      // ============================================================
+      // TIER 2: WORKS / ALBUMS LIST VIEW
+      // ============================================================
+      function showWorksView(modelId) {
+        stopHeroSlider();
+        currentModelId = modelId;
+        const model = galleryData.find(c => c.id === modelId) || galleryData[0];
+        if (!model) return;
+
+        morphCharacterColor(model.color, model.rgb);
+        switchPanelView('view-works');
+        updateFloatingDockActive(modelId);
+
+        // メインステージのバッジ反映
+        const stageColorChip = document.getElementById('stage-color-chip');
+        if (stageColorChip) stageColorChip.style.backgroundColor = model.color;
+        const stageBadgeName = document.getElementById('stage-badge-name');
+        if (stageBadgeName) stageBadgeName.textContent = getRomajiName(model.name, model.id);
+
+        // モデル概要カード更新
+        const modelNameEl = document.getElementById('active-model-name');
+        if (modelNameEl) modelNameEl.innerHTML = formatTitleHtml(model.name);
+        const worksCountEl = document.getElementById('active-model-works-count');
+        if (worksCountEl) worksCountEl.textContent = `${model.works.length} Works`;
+        const avatarEl = document.getElementById('active-model-avatar');
+        if (avatarEl) avatarEl.src = model.avatar;
+        const bioSectionEl = document.getElementById('active-model-bio-section');
+        const bioEl = document.getElementById('active-model-bio');
+        if (bioEl) {
+          if (model.bio && model.bio.trim() !== '') {
+            bioEl.innerHTML = model.bio;
+            if (bioSectionEl) bioSectionEl.style.display = 'block';
+          } else {
+            bioEl.innerHTML = '';
+            if (bioSectionEl) bioSectionEl.style.display = 'none';
+          }
         }
 
-        // ============================================================
-        // 4. FLOATING QUICK-SWITCHER DOCK
-        // ============================================================
-        function initFloatingDock() {
-          if (!dockInner) return;
-          dockInner.innerHTML = characters.map(c => `
-            <button class="dock-item-btn ${c.id === currentModelId ? 'active' : ''}" data-char-id="${c.id}" aria-label="${c.name} の作品へ切り替え">
-              <img src="${c.avatar}" alt="${c.name}" class="dock-avatar-img">
-              <div class="dock-active-indicator" style="background: ${c.color};"></div>
-              <div class="dock-tooltip">
-                <span class="dock-tooltip-dot" style="background: ${c.color};"></span>
-                <span>${c.name}</span>
+        // 作品アルバム一覧をレンダリング
+        const worksContainer = document.getElementById('works-albums-list');
+        if (worksContainer) {
+          worksContainer.innerHTML = model.works.map(w => `
+            <button class="work-album-card" data-work-id="${w.id}" aria-label="${w.title} の写真を閲覧">
+              <div class="work-album-cover">
+                <img src="${w.coverImage}" alt="${w.title}" loading="lazy" referrerpolicy="no-referrer">
+              </div>
+              <div class="work-album-info">
+                <h4 class="work-album-title">${w.title}</h4>
+                <div class="work-album-meta">
+                  <span class="work-photos-badge">${w.photos.length} Photos</span>
+                </div>
               </div>
             </button>
           `).join('');
 
-          dockInner.querySelectorAll('.dock-item-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-              const cid = btn.getAttribute('data-char-id');
-              showWorksView(cid);
+          worksContainer.querySelectorAll('.work-album-card').forEach(card => {
+            card.addEventListener('click', () => {
+              const wid = card.getAttribute('data-work-id');
+              if (wid) showPhotosView(wid);
             });
           });
         }
 
-        function updateFloatingDockActive(modelId) {
-          document.querySelectorAll('.dock-item-btn').forEach(btn => {
-            const isActive = btn.getAttribute('data-char-id') === modelId;
-            btn.classList.toggle('active', isActive);
+        // 最初の作品の最初の写真をメインステージに表示
+        if (model.works.length > 0) {
+          const firstWork = model.works[0];
+          currentWorkId = firstWork.id;
+          currentWork = firstWork;
+          currentPhotosInWork = firstWork.photos.map(p => ({
+            ...p,
+            characterId: model.id,
+            modelName: model.name,
+            workTitle: firstWork.title,
+            databaseId: firstWork.databaseId,
+          }));
+          currentPhotoIndex = 0;
+          updateModalFilteredList(currentPhotosInWork);
+          setMainStagePhoto(currentPhotosInWork[0], firstWork, model);
+        }
+
+        if (window.rebindCursorHovers) window.rebindCursorHovers();
+      }
+
+      // ============================================================
+      // TIER 3: PHOTOS THUMBNAILS GRID VIEW (INSIDE WORK)
+      // ============================================================
+      function showPhotosView(workId) {
+        currentWorkId = workId;
+        const model = galleryData.find(c => c.id === currentModelId) || galleryData[0];
+        if (!model) return;
+        const work = model.works.find(w => w.id === workId) || model.works[0];
+        if (!work) return;
+
+        currentWork = work;
+
+        switchPanelView('view-photos');
+        updateFloatingDockActive(currentModelId);
+
+        // 作品概要カード更新
+        const workTitleEl = document.getElementById('active-work-title');
+        if (workTitleEl) workTitleEl.textContent = work.title;
+        const photosCountEl = document.getElementById('active-work-photos-count');
+        if (photosCountEl) photosCountEl.textContent = `${work.photos.length} Photos`;
+        const backLabel = document.getElementById('btn-back-works-label');
+        if (backLabel) backLabel.textContent = `${model.name.split(' ')[0]}'S WORKS`;
+
+        // いいね・コメント状態の更新
+        updateWorkStatsUI();
+        if (work.databaseId) {
+          fetchLiveStats(work.databaseId);
+        }
+
+        currentPhotosInWork = work.photos.map(p => ({
+          ...p,
+          characterId: model.id,
+          modelName: model.name,
+          workTitle: work.title,
+          databaseId: work.databaseId,
+        }));
+
+        currentPhotoIndex = 0;
+        updateModalFilteredList(currentPhotosInWork);
+
+        // サムネイルグリッドの描画
+        const thumbsGrid = document.getElementById('photos-thumbnails-grid');
+        if (thumbsGrid) {
+          thumbsGrid.innerHTML = currentPhotosInWork.map((p, index) => `
+            <button class="photo-thumb-btn ${index === currentPhotoIndex ? 'active' : ''}" data-index="${index}" aria-label="${p.title}">
+              <img src="${p.image}" alt="${p.title}" loading="lazy" referrerpolicy="no-referrer">
+              <div class="photo-thumb-caption">${p.title}</div>
+            </button>
+          `).join('');
+
+          thumbsGrid.querySelectorAll('.photo-thumb-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+              const idx = parseInt(btn.getAttribute('data-index'), 10);
+              selectPhotoInWork(idx, work, model);
+            });
           });
         }
 
-        // ============================================================
-        // 5. CINEMATIC FULLSCREEN LIGHTBOX MODAL
-        // ============================================================
-        function openModal(photoId) {
-          modalFilteredList = currentPhotosInWork.length > 0 ? currentPhotosInWork : currentAllPhotosFlat;
-          const foundIdx = modalFilteredList.findIndex(p => p.id === photoId);
-          modalCurrentIndex = foundIdx !== -1 ? foundIdx : 0;
+        if (currentPhotosInWork.length > 0) {
+          setMainStagePhoto(currentPhotosInWork[0], work, model);
+        }
 
-          resetZoom();
-          renderModalContent();
-          cinematicModal?.showModal();
+        if (window.rebindCursorHovers) window.rebindCursorHovers();
+      }
 
-          if (!localStorage.getItem('miu_swipe_hint_seen')) {
-            if (modalSwipeHint) modalSwipeHint.style.display = 'flex';
+      function selectPhotoInWork(index, work, model) {
+        currentPhotoIndex = index;
+        document.querySelectorAll('.photo-thumb-btn').forEach((btn, i) => {
+          btn.classList.toggle('active', i === currentPhotoIndex);
+        });
+        setMainStagePhoto(currentPhotosInWork[index], work, model);
+      }
+
+      // パネルビュー切り替え
+      function switchPanelView(viewId) {
+        ['view-characters', 'view-works', 'view-photos'].forEach(id => {
+          document.getElementById(id)?.classList.toggle('active', id === viewId);
+        });
+
+        const isSubpage = (viewId === 'view-works' || viewId === 'view-photos');
+        const isPhotosView = (viewId === 'view-photos');
+
+        document.body.classList.toggle('is-subpage', isSubpage);
+        document.body.classList.toggle('is-photos-view', isPhotosView);
+
+        if (window.innerWidth <= 960) {
+          window.scrollTo({ top: 0, behavior: 'instant' });
+        }
+
+        document.getElementById('character-floating-dock')?.classList.toggle('visible', isSubpage);
+        document.getElementById('side-content-panel')?.classList.toggle('has-floating-dock', isSubpage);
+      }
+
+      // ============================================================
+      // MAIN STAGE PHOTO CONTROLLER
+      // ============================================================
+      function setMainStagePhoto(photo, work, model) {
+        if (!photo) return;
+
+        const mainImg = document.getElementById('main-stage-img');
+        const blurImg = document.getElementById('stage-blur-img');
+
+        if (!mainImg) return;
+
+        mainImg.style.opacity = '0.3';
+        mainImg.style.transform = 'scale(0.98)';
+
+        setTimeout(() => {
+          mainImg.src = photo.image;
+          if (blurImg) blurImg.src = photo.image;
+
+          const stageColorChip = document.getElementById('stage-color-chip');
+          if (stageColorChip && model) {
+            stageColorChip.style.backgroundColor = model.color;
           }
-        }
-
-        function closeModal() {
-          resetZoom();
-          if (modalSwipeHint) modalSwipeHint.style.display = 'none';
-          cinematicModal?.close();
-        }
-
-        function modalNext() {
-          resetZoom();
-          modalCurrentIndex = (modalCurrentIndex + 1) % modalFilteredList.length;
-          renderModalContent();
-        }
-
-        function modalPrev() {
-          resetZoom();
-          modalCurrentIndex = (modalCurrentIndex - 1 + modalFilteredList.length) % modalFilteredList.length;
-          renderModalContent();
-        }
-
-        function renderModalContent() {
-          const photo = modalFilteredList[modalCurrentIndex];
-          if (!photo) return;
-
-          if (modalImg) {
-            modalImg.style.opacity = '0';
-            modalImg.style.transform = 'scale(0.96)';
-            setTimeout(() => {
-              modalImg.src = photo.image;
-              modalImg.onload = () => {
-                modalImg.style.opacity = '1';
-                modalImg.style.transform = 'scale(1)';
-              };
-            }, 100);
+          const stageBadgeName = document.getElementById('stage-badge-name');
+          if (stageBadgeName && model) {
+            stageBadgeName.textContent = getRomajiName(model.name, model.id);
           }
 
-          if (modalTitle) modalTitle.textContent = photo.workTitle || photo.title;
-          if (modalModel) modalModel.textContent = photo.modelName || '';
-          if (modalBadge) modalBadge.textContent = `#${modalCurrentIndex + 1} / ${modalFilteredList.length}`;
+          mainImg.style.opacity = '1';
+          mainImg.style.transform = 'scale(1)';
+        }, 100);
+      }
 
-          updateModalLikeButton();
-        }
-
-        function resetZoom() {
-          currentScale = 1;
-          currentPanX = 0;
-          currentPanY = 0;
-          if (imageHolder) {
-            imageHolder.style.transform = 'translate3d(0, 0, 0) scale(1)';
+      function initStageControls() {
+        function goPrev() {
+          if (isHeroSliderActive) {
+            prevHeroSlide();
+            return;
           }
+          if (currentPhotosInWork.length <= 1) return;
+          currentPhotoIndex = (currentPhotoIndex - 1 + currentPhotosInWork.length) % currentPhotosInWork.length;
+          updatePhotoSelection();
         }
 
-        // Modal Gestures (Pinch zoom, double tap, swipe)
-        function initModalGestures() {
-          const stage = document.getElementById('modal-main-stage');
-          if (!stage) return;
+        function goNext() {
+          if (isHeroSliderActive) {
+            nextHeroSlide();
+            return;
+          }
+          if (currentPhotosInWork.length <= 1) return;
+          currentPhotoIndex = (currentPhotoIndex + 1) % currentPhotosInWork.length;
+          updatePhotoSelection();
+        }
+
+        function updatePhotoSelection() {
+          document.querySelectorAll('.photo-thumb-btn').forEach((btn, i) => {
+            btn.classList.toggle('active', i === currentPhotoIndex);
+          });
+          const model = galleryData.find(c => c.id === currentModelId);
+          const work = model?.works.find(w => w.id === currentWorkId);
+          setMainStagePhoto(currentPhotosInWork[currentPhotoIndex], work, model);
+        }
+
+        // モバイルタッチスワイプ
+        const stage = document.getElementById('main-visual-stage');
+        if (stage) {
+          let touchStartX = 0;
+          let touchEndX = 0;
 
           stage.addEventListener('touchstart', (e) => {
-            if (e.touches.length === 2) {
-              isPinching = true;
-              isPanning = false;
-              startPinchDist = Math.hypot(
-                e.touches[0].clientX - e.touches[1].clientX,
-                e.touches[0].clientY - e.touches[1].clientY
-              );
-              startScale = currentScale;
-            } else if (e.touches.length === 1) {
-              isPinching = false;
-              touchStartX = e.touches[0].clientX;
-              touchStartY = e.touches[0].clientY;
-              startPanX = currentPanX;
-              startPanY = currentPanY;
-              if (currentScale > 1.05) isPanning = true;
-
-              // Double tap check
-              const now = Date.now();
-              if (now - lastTapTime < 300) {
-                if (currentScale > 1.1) {
-                  resetZoom();
-                } else {
-                  currentScale = 2.4;
-                  if (imageHolder) imageHolder.style.transform = `translate3d(0, 0, 0) scale(${currentScale})`;
-                }
-                triggerLikeAnimation(e);
-              }
-              lastTapTime = now;
-            }
-          }, { passive: true });
-
-          stage.addEventListener('touchmove', (e) => {
-            if (isPinching && e.touches.length === 2) {
-              const dist = Math.hypot(
-                e.touches[0].clientX - e.touches[1].clientX,
-                e.touches[0].clientY - e.touches[1].clientY
-              );
-              currentScale = Math.min(Math.max(startScale * (dist / startPinchDist), 0.9), 4.5);
-              if (imageHolder) imageHolder.style.transform = `translate3d(${currentPanX}px, ${currentPanY}px, 0) scale(${currentScale})`;
-            } else if (isPanning && e.touches.length === 1) {
-              const deltaX = e.touches[0].clientX - touchStartX;
-              const deltaY = e.touches[0].clientY - touchStartY;
-              currentPanX = startPanX + deltaX;
-              currentPanY = startPanY + deltaY;
-              if (imageHolder) imageHolder.style.transform = `translate3d(${currentPanX}px, ${currentPanY}px, 0) scale(${currentScale})`;
-            }
+            touchStartX = e.changedTouches[0].screenX;
           }, { passive: true });
 
           stage.addEventListener('touchend', (e) => {
-            if (isPinching && e.touches.length < 2) isPinching = false;
-            if (isPanning && e.touches.length === 0) isPanning = false;
-
-            if (currentScale < 1.05) {
-              resetZoom();
-              // Swipe navigation
-              if (e.changedTouches.length > 0) {
-                const deltaX = e.changedTouches[0].clientX - touchStartX;
-                const deltaY = e.changedTouches[0].clientY - touchStartY;
-                if (Math.abs(deltaX) > 45 && Math.abs(deltaX) > Math.abs(deltaY) * 1.4) {
-                  if (deltaX < 0) modalNext();
-                  else modalPrev();
-                }
-              }
+            touchEndX = e.changedTouches[0].screenX;
+            const diff = touchEndX - touchStartX;
+            if (Math.abs(diff) > 45) {
+              if (diff > 0) goPrev();
+              else goNext();
             }
           }, { passive: true });
+        }
+      }
 
-          modalSwipeHint?.addEventListener('click', () => {
-            modalSwipeHint.style.display = 'none';
-            localStorage.setItem('miu_swipe_hint_seen', 'true');
+      // ============================================================
+      // HERO SLIDER (トップページ自動スライダー)
+      // ============================================================
+      function startHeroSlider() {
+        isHeroSliderActive = true;
+        updateModalFilteredList(heroSliderList);
+
+        const dotsContainer = document.getElementById('stage-slider-dots');
+        if (dotsContainer) {
+          dotsContainer.classList.add('active');
+          dotsContainer.innerHTML = heroSliderList.map((item, idx) => `
+            <button class="slider-dot ${idx === heroSliderIndex ? 'active' : ''}" data-idx="${idx}" aria-label="${item.modelName} のスライドへ"></button>
+          `).join('');
+
+          dotsContainer.querySelectorAll('.slider-dot').forEach(dot => {
+            dot.addEventListener('click', (e) => {
+              e.stopPropagation();
+              const idx = parseInt(dot.getAttribute('data-idx'), 10);
+              const dir = idx >= heroSliderIndex ? 1 : -1;
+              renderHeroSlide(idx, dir);
+              restartHeroSliderTimer();
+            });
           });
         }
 
-        // ============================================================
-        // 6. LIKES & COMMENTS (PRESERVE EXACT LOGIC)
-        // ============================================================
-        function isPostLiked(dbId) {
-          if (!dbId) return false;
-          const liked = JSON.parse(localStorage.getItem('miu_liked_posts') || '[]');
-          return liked.includes(dbId.toString());
+        renderHeroSlide(heroSliderIndex);
+        restartHeroSliderTimer();
+      }
+
+      function stopHeroSlider() {
+        isHeroSliderActive = false;
+        if (heroSliderTimer) {
+          clearInterval(heroSliderTimer);
+          heroSliderTimer = null;
+        }
+        const dotsContainer = document.getElementById('stage-slider-dots');
+        if (dotsContainer) {
+          dotsContainer.classList.remove('active');
+        }
+      }
+
+      function restartHeroSliderTimer() {
+        if (heroSliderTimer) clearInterval(heroSliderTimer);
+        heroSliderTimer = setInterval(() => {
+          if (isHeroSliderActive) {
+            nextHeroSlide();
+          }
+        }, 5200);
+      }
+
+      function nextHeroSlide() {
+        if (!heroSliderList || heroSliderList.length === 0) return;
+        const nextIdx = (heroSliderIndex + 1) % heroSliderList.length;
+        renderHeroSlide(nextIdx, 1);
+      }
+
+      function prevHeroSlide() {
+        if (!heroSliderList || heroSliderList.length === 0) return;
+        const prevIdx = (heroSliderIndex - 1 + heroSliderList.length) % heroSliderList.length;
+        renderHeroSlide(prevIdx, -1);
+      }
+
+      function renderHeroSlide(index, direction = 1) {
+        if (!heroSliderList || heroSliderList.length === 0) return;
+        heroSliderIndex = index;
+
+        const currentSlide = heroSliderList[heroSliderIndex];
+        const mainImg = document.getElementById('main-stage-img');
+        const blurImg = document.getElementById('stage-blur-img');
+        const stageColorChip = document.getElementById('stage-color-chip');
+        const stageBadgeName = document.getElementById('stage-badge-name');
+
+        if (stageColorChip) stageColorChip.style.backgroundColor = currentSlide.color;
+        if (stageBadgeName) stageBadgeName.textContent = getRomajiName(currentSlide.modelName, currentSlide.characterId);
+
+        document.querySelectorAll('.stage-slider-dots .slider-dot').forEach((dot, i) => {
+          dot.classList.toggle('active', i === heroSliderIndex);
+        });
+
+        morphCharacterColor(currentSlide.color, currentSlide.rgb);
+
+        if (mainImg) {
+          mainImg.style.opacity = '0.3';
+          mainImg.style.transform = `scale(0.97) translateX(${direction * 8}px)`;
+
+          setTimeout(() => {
+            mainImg.src = currentSlide.image;
+            if (blurImg) blurImg.src = currentSlide.image;
+            mainImg.style.opacity = '1';
+            mainImg.style.transform = 'scale(1) translateX(0px)';
+          }, 140);
+        }
+      }
+
+      // ============================================================
+      // FLOATING CHARACTER DOCK
+      // ============================================================
+      function initFloatingDock() {
+        const dockInner = document.getElementById('dock-inner');
+        if (!dockInner) return;
+
+        dockInner.innerHTML = galleryData.map(c => `
+          <button class="dock-item-btn" data-char-id="${c.id}" aria-label="${c.name}">
+            <img src="${c.avatar}" alt="${c.name}" loading="lazy">
+          </button>
+        `).join('');
+
+        dockInner.querySelectorAll('.dock-item-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const cid = btn.getAttribute('data-char-id');
+            if (cid) showWorksView(cid);
+          });
+        });
+      }
+
+      function updateFloatingDockActive(modelId) {
+        document.querySelectorAll('.dock-item-btn').forEach(btn => {
+          btn.classList.toggle('active', btn.getAttribute('data-char-id') === modelId);
+        });
+      }
+
+      // ============================================================
+      // DYNAMIC COLOR MORPHING
+      // ============================================================
+      function morphCharacterColor(hex, rgb) {
+        if (!hex || !rgb) return;
+        document.documentElement.style.setProperty('--char-accent', hex);
+        document.documentElement.style.setProperty('--char-rgb', rgb);
+        document.documentElement.style.setProperty('--char-accent-rgb', rgb);
+        document.documentElement.style.setProperty('--char-glow', `rgba(${rgb}, 0.35)`);
+      }
+
+      // ============================================================
+      // CINEMATIC FULLSCREEN LIGHTBOX MODAL
+      // ============================================================
+      function updateModalFilteredList(newList) {
+        modalFilteredList = [...newList];
+      }
+
+      function openModal(photoId) {
+        if (!modal) return;
+        const targetIdx = modalFilteredList.findIndex(p => p.id === photoId);
+        modalPhotoIndex = targetIdx !== -1 ? targetIdx : 0;
+
+        resetZoom();
+        renderModalContent();
+        modal.showModal();
+        document.body.style.overflow = 'hidden';
+
+        showSwipeHintFirstTime();
+      }
+
+      function closeModal() {
+        if (!modal) return;
+        modal.close();
+        document.body.style.overflow = '';
+        resetZoom();
+      }
+
+      function renderModalContent() {
+        const photo = modalFilteredList[modalPhotoIndex];
+        if (!photo) return;
+
+        if (modalImg) {
+          modalImg.src = photo.image;
+        }
+        if (modalTitle) modalTitle.textContent = photo.title || photo.workTitle || '';
+        if (modalModel) modalModel.textContent = photo.modelName || '';
+        if (modalBadge) modalBadge.textContent = photo.characterId ? photo.characterId.toUpperCase() : 'PHOTO';
+
+        updateModalLikeButton();
+      }
+
+      function nextModalPhoto() {
+        if (modalFilteredList.length <= 1) return;
+        modalPhotoIndex = (modalPhotoIndex + 1) % modalFilteredList.length;
+        resetZoom();
+        renderModalContent();
+      }
+
+      function prevModalPhoto() {
+        if (modalFilteredList.length <= 1) return;
+        modalPhotoIndex = (modalPhotoIndex - 1 + modalFilteredList.length) % modalFilteredList.length;
+        resetZoom();
+        renderModalContent();
+      }
+
+      function resetZoom() {
+        currentScale = 1;
+        currentPanX = 0;
+        currentPanY = 0;
+        applyTransform();
+      }
+
+      function applyTransform() {
+        if (modalImg) {
+          modalImg.style.transform = `translate3d(${currentPanX}px, ${currentPanY}px, 0) scale(${currentScale})`;
+        }
+      }
+
+      function showSwipeHintFirstTime() {
+        if (!swipeHintEl) return;
+        const seen = localStorage.getItem('miu_swipe_hint_seen');
+        if (!seen && window.innerWidth <= 960) {
+          swipeHintEl.style.display = 'block';
+          swipeHintTimeout = setTimeout(() => {
+            swipeHintEl.style.display = 'none';
+            localStorage.setItem('miu_swipe_hint_seen', 'true');
+          }, 3500);
+        }
+      }
+
+      function initModal() {
+        modalCloseBtn?.addEventListener('click', closeModal);
+        modalNextBtn?.addEventListener('click', nextModalPhoto);
+        modalPrevBtn?.addEventListener('click', prevModalPhoto);
+        modalBackdrop?.addEventListener('click', closeModal);
+
+        // キーボード操作
+        modal?.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape') closeModal();
+          if (e.key === 'ArrowRight') nextModalPhoto();
+          if (e.key === 'ArrowLeft') prevModalPhoto();
+        });
+
+        // ピンチズーム & パン & スワイプ
+        if (imageHolder) {
+          imageHolder.addEventListener('touchstart', handleTouchStart, { passive: false });
+          imageHolder.addEventListener('touchmove', handleTouchMove, { passive: false });
+          imageHolder.addEventListener('touchend', handleTouchEnd, { passive: true });
         }
 
-        function markPostAsLiked(dbId) {
-          if (!dbId) return;
-          const liked = JSON.parse(localStorage.getItem('miu_liked_posts') || '[]');
-          if (!liked.includes(dbId.toString())) {
-            liked.push(dbId.toString());
-            localStorage.setItem('miu_liked_posts', JSON.stringify(liked));
+        // ダブルタップズーム
+        modalImg?.addEventListener('click', (e) => {
+          const now = Date.now();
+          if (now - lastTapTime < 300) {
+            e.preventDefault();
+            if (currentScale > 1) {
+              resetZoom();
+            } else {
+              currentScale = 2.4;
+              applyTransform();
+            }
+          }
+          lastTapTime = now;
+        });
+      }
+
+      function handleTouchStart(e) {
+        if (e.touches.length === 2) {
+          isPinching = true;
+          startPinchDist = getDistance(e.touches[0], e.touches[1]);
+          startScale = currentScale;
+        } else if (e.touches.length === 1) {
+          touchStartX = e.touches[0].clientX;
+          touchStartY = e.touches[0].clientY;
+          startPanX = currentPanX;
+          startPanY = currentPanY;
+          if (currentScale > 1) {
+            isPanning = true;
           }
         }
+      }
 
-        function triggerLikeAnimation(e) {
-          if (!currentWork || !currentWork.databaseId) return;
-          const dbId = currentWork.databaseId;
-          if (isPostLiked(dbId)) return;
+      function handleTouchMove(e) {
+        if (isPinching && e.touches.length === 2) {
+          e.preventDefault();
+          const dist = getDistance(e.touches[0], e.touches[1]);
+          currentScale = Math.min(Math.max(1, startScale * (dist / startPinchDist)), 4);
+          applyTransform();
+        } else if (isPanning && e.touches.length === 1) {
+          e.preventDefault();
+          const dx = e.touches[0].clientX - touchStartX;
+          const dy = e.touches[0].clientY - touchStartY;
+          currentPanX = startPanX + dx;
+          currentPanY = startPanY + dy;
+          applyTransform();
+        }
+      }
 
-          markPostAsLiked(dbId);
-          currentWork.likeCount++;
-          updateWorkStatsUI();
-
-          // Heart burst animation
-          const heart = document.createElement('div');
-          heart.className = 'fixed pointer-events-none z-[99999] transform -translate-x-1/2 -translate-y-1/2 animate-heart-burst';
-          heart.innerHTML = `<svg viewBox="0 0 24 24" class="w-28 h-28 fill-current text-rose-500 drop-shadow-[0_0_30px_rgba(244,63,94,0.8)]"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>`;
-          heart.style.left = (e?.clientX || window.innerWidth / 2) + 'px';
-          heart.style.top = (e?.clientY || window.innerHeight / 2) + 'px';
-          document.body.appendChild(heart);
-          setTimeout(() => heart.remove(), 1000);
-
-          if (window.WP_GRAPHQL_URL) {
-            fetch(window.WP_GRAPHQL_URL, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                query: `mutation IncrementLike($postId: Int!) { incrementLike(input: {postId: $postId}) { newCount } }`,
-                variables: { postId: parseInt(dbId) }
-              })
-            }).catch(err => console.error('Like request failed', err));
+      function handleTouchEnd(e) {
+        if (isPinching) {
+          isPinching = false;
+          if (currentScale <= 1.05) resetZoom();
+        } else if (!isPanning && e.changedTouches.length === 1) {
+          const dx = e.changedTouches[0].clientX - touchStartX;
+          const dy = e.changedTouches[0].clientY - touchStartY;
+          if (currentScale === 1 && Math.abs(dx) > 45 && Math.abs(dy) < 60) {
+            if (dx > 0) prevModalPhoto();
+            else nextModalPhoto();
           }
         }
+        isPanning = false;
+      }
 
-        function updateWorkStatsUI() {
-          if (!currentWork) return;
-          const likeCountEl = document.getElementById('work-like-count');
-          const commentCountEl = document.getElementById('work-comment-count');
-          const workLikeBtn = document.getElementById('work-like-btn');
-          const isLiked = isPostLiked(currentWork.databaseId);
+      function getDistance(t1, t2) {
+        return Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+      }
 
-          if (likeCountEl) likeCountEl.textContent = (currentWork.likeCount || 0).toLocaleString();
-          if (commentCountEl) commentCountEl.textContent = (currentWork.guestComments?.length || 0).toString();
-          if (workLikeBtn) {
-            if (isLiked) workLikeBtn.classList.add('is-liked');
-            else workLikeBtn.classList.remove('is-liked');
-          }
-          updateModalLikeButton();
+      // ============================================================
+      // ABOUT / INFO MODAL
+      // ============================================================
+      function initAboutModal() {
+        const infoModal = document.getElementById('info-modal');
+        const openBtn = document.getElementById('info-open-btn');
+        const closeBtn = document.getElementById('info-close-btn');
+
+        openBtn?.addEventListener('click', () => {
+          infoModal?.showModal();
+        });
+
+        closeBtn?.addEventListener('click', () => {
+          infoModal?.close();
+        });
+
+        infoModal?.addEventListener('click', (e) => {
+          if (e.target === infoModal) infoModal.close();
+        });
+      }
+
+      // ============================================================
+      // LIKES & COMMENTS FUNCTIONALITY
+      // ============================================================
+      function isPostLiked(dbId) {
+        if (!dbId) return false;
+        const liked = JSON.parse(localStorage.getItem('miu_liked_posts') || '[]');
+        return liked.includes(dbId.toString());
+      }
+
+      function markPostAsLiked(dbId) {
+        if (!dbId) return;
+        const liked = JSON.parse(localStorage.getItem('miu_liked_posts') || '[]');
+        if (!liked.includes(dbId.toString())) {
+          liked.push(dbId.toString());
+          localStorage.setItem('miu_liked_posts', JSON.stringify(liked));
         }
+      }
 
-        function updateModalLikeButton() {
-          const modalLikeBtn = document.getElementById('modal-like-btn');
-          if (!modalLikeBtn || !currentWork) return;
-          const isLiked = isPostLiked(currentWork.databaseId);
-          if (isLiked) {
-            modalLikeBtn.classList.add('text-rose-500', 'fill-current');
-            modalLikeBtn.style.color = 'var(--char-accent)';
-          } else {
-            modalLikeBtn.classList.remove('text-rose-500', 'fill-current');
-            modalLikeBtn.style.color = '';
-          }
-        }
+      function triggerLikeAnimation(e) {
+        if (!currentWork || !currentWork.databaseId) return;
+        const dbId = currentWork.databaseId;
+        if (isPostLiked(dbId)) return;
 
-        function fetchLiveStats(postId) {
-          if (!window.WP_GRAPHQL_URL || !postId) return;
+        markPostAsLiked(dbId);
+        currentWork.likeCount++;
+        updateWorkStatsUI();
+
+        // Heart burst animation
+        const heart = document.createElement('div');
+        heart.className = 'fixed pointer-events-none z-[99999] transform -translate-x-1/2 -translate-y-1/2 animate-heart-burst';
+        heart.innerHTML = `<svg viewBox="0 0 24 24" class="w-28 h-28 fill-current text-rose-500 drop-shadow-[0_0_30px_rgba(244,63,94,0.8)]"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>`;
+        heart.style.left = (e?.clientX || window.innerWidth / 2) + 'px';
+        heart.style.top = (e?.clientY || window.innerHeight / 2) + 'px';
+        document.body.appendChild(heart);
+        setTimeout(() => heart.remove(), 1000);
+
+        if (window.WP_GRAPHQL_URL) {
           fetch(window.WP_GRAPHQL_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              query: `query GetLiveStats($postId: Int!) { liveArtworkStats(postId: $postId) { likeCount guestComments { id parentId author content date } } }`,
-              variables: { postId: parseInt(postId) }
+              query: `mutation IncrementLike($postId: Int!) { incrementLike(input: {postId: $postId}) { newCount } }`,
+              variables: { postId: parseInt(dbId) }
+            })
+          }).catch(err => console.error('Like request failed', err));
+        }
+      }
+
+      function updateWorkStatsUI() {
+        if (!currentWork) return;
+        const likeCountEl = document.getElementById('work-like-count');
+        const commentCountEl = document.getElementById('work-comment-count');
+        const workLikeBtn = document.getElementById('work-like-btn');
+        const isLiked = isPostLiked(currentWork.databaseId);
+
+        if (likeCountEl) likeCountEl.textContent = (currentWork.likeCount || 0).toLocaleString();
+        if (commentCountEl) commentCountEl.textContent = (currentWork.guestComments?.length || 0).toString();
+        if (workLikeBtn) {
+          if (isLiked) workLikeBtn.classList.add('is-liked');
+          else workLikeBtn.classList.remove('is-liked');
+        }
+        updateModalLikeButton();
+      }
+
+      function updateModalLikeButton() {
+        const modalLikeBtn = document.getElementById('modal-like-btn');
+        if (!modalLikeBtn || !currentWork) return;
+        const isLiked = isPostLiked(currentWork.databaseId);
+        if (isLiked) {
+          modalLikeBtn.classList.add('text-rose-500', 'fill-current');
+          modalLikeBtn.style.color = 'var(--char-accent)';
+        } else {
+          modalLikeBtn.classList.remove('text-rose-500', 'fill-current');
+          modalLikeBtn.style.color = '';
+        }
+      }
+
+      function fetchLiveStats(postId) {
+        if (!window.WP_GRAPHQL_URL || !postId) return;
+        fetch(window.WP_GRAPHQL_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: `query GetLiveStats($postId: Int!) { liveArtworkStats(postId: $postId) { likeCount guestComments { id parentId author content date } } }`,
+            variables: { postId: parseInt(postId) }
+          })
+        })
+        .then(res => res.json())
+        .then(res => {
+          const stats = res?.data?.liveArtworkStats;
+          if (stats && currentWork && currentWork.databaseId == postId) {
+            currentWork.likeCount = stats.likeCount || 0;
+            currentWork.guestComments = stats.guestComments || [];
+            updateWorkStatsUI();
+            renderComments();
+          }
+        })
+        .catch(err => console.error(err));
+      }
+
+      function renderComments() {
+        if (!commentList || !currentWork) return;
+        const comments = currentWork.guestComments || [];
+        const modalCount = document.getElementById('modal-comment-count');
+        if (modalCount) modalCount.textContent = comments.length;
+
+        if (comments.length === 0) {
+          commentList.innerHTML = '<p class="text-gray-500 font-light text-center py-10">まだコメントはありません。<br/>最初のコメントを投稿しよう！</p>';
+          return;
+        }
+
+        const topComments = comments.filter(c => !c.parentId || c.parentId === 0);
+        commentList.innerHTML = topComments.map(c => {
+          const replies = comments.filter(r => r.parentId === c.id);
+          return `
+            <div class="bg-white/5 border border-white/5 rounded-2xl p-3 text-xs">
+              <div class="flex items-baseline justify-between mb-1.5">
+                <span class="text-white font-medium">${c.author || '名無しさん'}</span>
+                <span class="text-gray-500 text-[10px]">${c.date ? new Date(c.date).toLocaleDateString() : 'Just now'}</span>
+              </div>
+              <p class="text-gray-300 font-light leading-relaxed mb-2">${c.content}</p>
+              <button class="btn-reply text-[10px] text-gray-500 hover:text-rose-400 flex items-center gap-1 outline-none" data-reply-id="${c.id}" data-reply-author="${c.author || '名無しさん'}">
+                <span>↩ 返信する</span>
+              </button>
+              ${replies.length > 0 ? `
+                <div class="space-y-2 mt-2 ml-4 border-l-2 border-rose-500/40 pl-2">
+                  ${replies.map(r => `
+                    <div class="bg-white/5 rounded-xl p-2">
+                      <div class="flex items-baseline justify-between mb-1">
+                        <span class="text-white font-medium text-[11px]">${r.author || '名無しさん'}</span>
+                        <span class="text-gray-500 text-[9px]">${r.date ? new Date(r.date).toLocaleDateString() : 'Just now'}</span>
+                      </div>
+                      <p class="text-gray-300 font-light leading-relaxed">${r.content}</p>
+                    </div>
+                  `).join('')}
+                </div>
+              ` : ''}
+            </div>
+          `;
+        }).join('');
+
+        commentList.querySelectorAll('.btn-reply').forEach(btn => {
+          btn.addEventListener('click', () => {
+            activeReplyId = parseInt(btn.getAttribute('data-reply-id'));
+            const name = btn.getAttribute('data-reply-author');
+            const indicator = document.getElementById('reply-indicator');
+            const nameSpan = document.getElementById('reply-indicator-name');
+            if (indicator && nameSpan) {
+              nameSpan.textContent = name;
+              indicator.classList.remove('hidden');
+              indicator.classList.add('flex');
+            }
+            commentContentInput?.focus();
+          });
+        });
+      }
+
+      function cancelReply() {
+        activeReplyId = 0;
+        const indicator = document.getElementById('reply-indicator');
+        if (indicator) {
+          indicator.classList.add('hidden');
+          indicator.classList.remove('flex');
+        }
+      }
+
+      function openCommentModal() {
+        renderComments();
+        if (commentModal && commentModalContent) {
+          commentModal.showModal();
+          setTimeout(() => {
+            commentModalContent.style.transform = 'scale(1)';
+            commentModalContent.style.opacity = '1';
+          }, 10);
+          commentModal.onclick = (e) => {
+            if (e.target === commentModal) closeCommentModal();
+          };
+        }
+      }
+
+      function closeCommentModal() {
+        if (commentModal && commentModalContent) {
+          commentModalContent.style.transform = 'scale(0.95)';
+          commentModalContent.style.opacity = '0';
+          setTimeout(() => {
+            commentModal.close();
+            cancelReply();
+          }, 250);
+        }
+      }
+
+      function submitComment() {
+        if (!currentWork || !currentWork.databaseId) {
+          alert("エラー：作品が選択されていません。");
+          return;
+        }
+        const author = (commentAuthorInput?.value || '').trim() || '名無しさん';
+        const content = (commentContentInput?.value || '').trim();
+
+        if (!content) {
+          alert("コメントを入力してください！");
+          return;
+        }
+
+        if (commentSubmitBtn) {
+          commentSubmitBtn.disabled = true;
+          commentSubmitBtn.textContent = '送信中...';
+        }
+
+        if (window.WP_GRAPHQL_URL) {
+          fetch(window.WP_GRAPHQL_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              query: `mutation AddComment($postId: Int!, $author: String!, $content: String!, $parentId: ID) {
+                createComment(input: {
+                  commentOn: $postId,
+                  author: $author,
+                  content: $content,
+                  parent: $parentId
+                }) {
+                  success
+                  comment { id date content }
+                }
+              }`,
+              variables: {
+                postId: parseInt(currentWork.databaseId),
+                author: author,
+                content: content,
+                parentId: activeReplyId ? String(activeReplyId) : null
+              }
             })
           })
           .then(res => res.json())
           .then(res => {
-            const stats = res?.data?.liveArtworkStats;
-            if (stats && currentWork && currentWork.databaseId == postId) {
-              currentWork.likeCount = stats.likeCount || 0;
-              currentWork.guestComments = stats.guestComments || [];
-              updateWorkStatsUI();
-              renderComments();
+            if (res?.data?.createComment?.success) {
+              if (commentContentInput) commentContentInput.value = '';
+              cancelReply();
+              fetchLiveStats(currentWork.databaseId);
+            } else {
+              alert("コメントの投稿に失敗しました。時間をおいて再試行してください。");
             }
           })
-          .catch(err => console.error(err));
-        }
-
-        function renderComments() {
-          if (!commentList || !currentWork) return;
-          const comments = currentWork.guestComments || [];
-          const modalCount = document.getElementById('modal-comment-count');
-          if (modalCount) modalCount.textContent = comments.length;
-
-          if (comments.length === 0) {
-            commentList.innerHTML = '<p class="text-gray-500 font-light text-center py-10">まだコメントはありません。<br/>最初のコメントを投稿しよう！</p>';
-            return;
-          }
-
-          const topComments = comments.filter(c => !c.parentId || c.parentId === 0);
-          commentList.innerHTML = topComments.map(c => {
-            const replies = comments.filter(r => r.parentId === c.id);
-            return `
-              <div class="bg-white/5 border border-white/5 rounded-2xl p-3 text-xs">
-                <div class="flex items-baseline justify-between mb-1.5">
-                  <span class="text-white font-medium">${c.author || '名無しさん'}</span>
-                  <span class="text-gray-500 text-[10px]">${c.date ? new Date(c.date).toLocaleDateString() : 'Just now'}</span>
-                </div>
-                <p class="text-gray-300 font-light leading-relaxed mb-2">${c.content}</p>
-                <button class="btn-reply text-[10px] text-gray-500 hover:text-rose-400 flex items-center gap-1 outline-none" data-reply-id="${c.id}" data-reply-author="${c.author || '名無しさん'}">
-                  <span>↩ 返信する</span>
-                </button>
-                ${replies.length > 0 ? `
-                  <div class="space-y-2 mt-2 ml-4 border-l-2 border-rose-500/40 pl-2">
-                    ${replies.map(r => `
-                      <div class="bg-white/5 rounded-xl p-2">
-                        <div class="flex items-baseline justify-between mb-1">
-                          <span class="text-white font-medium text-[11px]">${r.author || '名無しさん'}</span>
-                          <span class="text-gray-500 text-[9px]">${r.date ? new Date(r.date).toLocaleDateString() : 'Just now'}</span>
-                        </div>
-                        <p class="text-gray-300 font-light leading-relaxed">${r.content}</p>
-                      </div>
-                    `).join('')}
-                  </div>
-                ` : ''}
-              </div>
-            `;
-          }).join('');
-
-          commentList.querySelectorAll('.btn-reply').forEach(btn => {
-            btn.addEventListener('click', () => {
-              activeReplyId = parseInt(btn.getAttribute('data-reply-id'));
-              const name = btn.getAttribute('data-reply-author');
-              const indicator = document.getElementById('reply-indicator');
-              const nameSpan = document.getElementById('reply-indicator-name');
-              if (indicator && nameSpan) {
-                nameSpan.textContent = name;
-                indicator.classList.remove('hidden');
-                indicator.classList.add('flex');
-              }
-              commentContentInput?.focus();
-            });
-          });
-        }
-
-        function cancelReply() {
-          activeReplyId = 0;
-          const indicator = document.getElementById('reply-indicator');
-          if (indicator) {
-            indicator.classList.add('hidden');
-            indicator.classList.remove('flex');
-          }
-        }
-
-        function openCommentModal() {
-          renderComments();
-          if (commentModal && commentModalContent) {
-            commentModal.showModal();
-            setTimeout(() => {
-              commentModalContent.style.transform = 'scale(1)';
-              commentModalContent.style.opacity = '1';
-            }, 10);
-            commentModal.onclick = (e) => {
-              if (e.target === commentModal) closeCommentModal();
-            };
-          }
-        }
-
-        function closeCommentModal() {
-          if (commentModal && commentModalContent) {
-            commentModalContent.style.transform = 'scale(0.95)';
-            commentModalContent.style.opacity = '0';
-            setTimeout(() => {
-              commentModal.close();
-              cancelReply();
-            }, 250);
-          }
-        }
-
-        function submitComment() {
-          if (!currentWork || !currentWork.databaseId) {
-            alert("エラー：作品が選択されていません。");
-            return;
-          }
-          const author = (commentAuthorInput?.value || '').trim() || '名無しさん';
-          const content = (commentContentInput?.value || '').trim();
-
-          if (!content) {
-            alert("コメントを入力してください！");
-            return;
-          }
-
-          if (commentSubmitBtn) {
-            commentSubmitBtn.disabled = true;
-            commentSubmitBtn.textContent = '送信中...';
-          }
-
-          if (window.WP_GRAPHQL_URL) {
-            fetch(window.WP_GRAPHQL_URL, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                query: `mutation SubmitComment($postId: Int!, $author: String!, $content: String!, $parentId: Int) { submitGuestComment(input: {postId: $postId, author: $author, content: $content, parentId: $parentId}) { success message } }`,
-                variables: {
-                  postId: parseInt(currentWork.databaseId),
-                  author,
-                  content,
-                  parentId: activeReplyId || 0
-                }
-              })
-            })
-            .then(res => res.json())
-            .then(data => {
-              if (data?.data?.submitGuestComment?.success) {
-                if (commentContentInput) commentContentInput.value = '';
-                cancelReply();
-                fetchLiveStats(currentWork.databaseId);
-                setTimeout(() => {
-                  if (commentList) commentList.scrollTop = commentList.scrollHeight;
-                }, 300);
-              } else {
-                const errMsg = data?.data?.submitGuestComment?.message || data?.errors?.[0]?.message || 'サーバー側で拒否されました';
-                alert('送信に失敗しました: ' + errMsg);
-              }
-            })
-            .catch(err => {
-              console.error('Comment error:', err);
-              alert('通信エラーが発生しました。');
-            })
-            .finally(() => {
-              if (commentSubmitBtn) {
-                commentSubmitBtn.disabled = false;
-                commentSubmitBtn.textContent = '送信';
-              }
-            });
-          }
-        }
-
-        // ============================================================
-        // 7. MOTION & INTERACTION (CURSOR & 3D TILT)
-        // ============================================================
-        function initCursor() {
-          const cursor = document.getElementById('custom-cursor');
-          if (!cursor) return;
-
-          let mouseX = window.innerWidth / 2;
-          let mouseY = window.innerHeight / 2;
-          let cursorX = mouseX;
-          let cursorY = mouseY;
-
-          window.addEventListener('mousemove', (e) => {
-            mouseX = e.clientX;
-            mouseY = e.clientY;
-          }, { passive: true });
-
-          function animate() {
-            cursorX += (mouseX - cursorX) * 0.25;
-            cursorY += (mouseY - cursorY) * 0.25;
-            cursor.style.transform = `translate3d(${cursorX}px, ${cursorY}px, 0)`;
-            requestAnimationFrame(animate);
-          }
-          requestAnimationFrame(animate);
-
-          document.addEventListener('mouseover', (e) => {
-            const target = e.target.closest('button, a, .char-select-card, .work-album-card, .photo-thumb-btn, .dock-item-btn');
-            if (target) cursor.classList.add('cursor-hover');
-            else cursor.classList.remove('cursor-hover');
-          });
-        }
-
-        function init3DTilt() {
-          const tiltEl = document.getElementById('stage-photo-wrapper');
-          if (!tiltEl) return;
-          const intensity = 6;
-
-          tiltEl.addEventListener('mousemove', (e) => {
-            const rect = tiltEl.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
-            const centerX = rect.width / 2;
-            const centerY = rect.height / 2;
-            const rotateX = ((y - centerY) / centerY) * -intensity;
-            const rotateY = ((x - centerX) / centerX) * intensity;
-            tiltEl.style.transform = `perspective(1000px) rotateX(${rotateX.toFixed(1)}deg) rotateY(${rotateY.toFixed(1)}deg) scale3d(1.01, 1.01, 1.01)`;
-          }, { passive: true });
-
-          tiltEl.addEventListener('mouseleave', () => {
-            tiltEl.style.transform = 'perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)';
-          }, { passive: true });
-        }
-
-        // ============================================================
-        // 8. EVENT BINDINGS & INITIALIZATION
-        // ============================================================
-        function setupEventListeners() {
-          // Home brand click
-          document.getElementById('brand-home-link')?.addEventListener('click', (e) => {
-            e.preventDefault();
-            showCharactersView();
-          });
-
-          // Back buttons
-          document.getElementById('btn-back-to-characters')?.addEventListener('click', showCharactersView);
-          document.getElementById('btn-back-to-works')?.addEventListener('click', () => showWorksView(currentModelId));
-
-          // Main stage photo click -> Lightbox Modal
-          document.getElementById('stage-photo-wrapper')?.addEventListener('click', (e) => {
-            if (isHeroSliderActive || !document.body.classList.contains('is-subpage')) return;
-            const activePhoto = currentPhotosInWork[currentPhotoIndex];
-            if (activePhoto) openModal(activePhoto.id);
-          });
-
-          // Slider dots click
-          document.querySelectorAll('.slider-dot').forEach(dot => {
-            dot.addEventListener('click', () => {
-              const idx = parseInt(dot.getAttribute('data-slide-index'));
-              heroCurrentIndex = idx;
-              updateHeroSlide(idx);
-            });
-          });
-
-          // Modal Controls
-          document.getElementById('modal-close-btn')?.addEventListener('click', closeModal);
-          document.getElementById('modal-backdrop-blur')?.addEventListener('click', closeModal);
-          document.getElementById('modal-next-btn')?.addEventListener('click', modalNext);
-          document.getElementById('modal-prev-btn')?.addEventListener('click', modalPrev);
-
-          // Modal Actions
-          document.getElementById('modal-like-btn')?.addEventListener('click', (e) => triggerLikeAnimation(e));
-          document.getElementById('modal-comment-btn')?.addEventListener('click', openCommentModal);
-
-          // Work Header Actions
-          document.getElementById('work-like-btn')?.addEventListener('click', (e) => triggerLikeAnimation(e));
-          document.getElementById('work-comment-btn')?.addEventListener('click', openCommentModal);
-
-          // Comments Modal Controls
-          document.getElementById('btn-close-comment-modal')?.addEventListener('click', closeCommentModal);
-          document.getElementById('btn-cancel-reply')?.addEventListener('click', cancelReply);
-          document.getElementById('comment-submit-btn')?.addEventListener('click', submitComment);
-          commentContentInput?.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') submitComment();
-          });
-
-          // Info Modal Controls
-          document.getElementById('btn-open-info')?.addEventListener('click', () => infoModal?.showModal());
-          document.getElementById('info-close-btn')?.addEventListener('click', () => infoModal?.close());
-          infoModal?.addEventListener('click', (e) => {
-            if (e.target === infoModal) infoModal.close();
-          });
-
-          // Keyboard Shortcuts
-          window.addEventListener('keydown', (e) => {
-            if (cinematicModal?.open) {
-              if (e.key === 'Escape') closeModal();
-              if (e.key === 'ArrowRight') modalNext();
-              if (e.key === 'ArrowLeft') modalPrev();
-              return;
-            }
-            if (commentModal?.open) {
-              if (e.key === 'Escape') closeCommentModal();
-              return;
-            }
-            if (infoModal?.open) {
-              if (e.key === 'Escape') infoModal.close();
-              return;
-            }
-            if (e.key === 'Escape') {
-              if (viewPhotos?.classList.contains('active')) {
-                showWorksView(currentModelId);
-              } else if (viewWorks?.classList.contains('active')) {
-                showCharactersView();
-              }
+          .catch(err => {
+            console.error(err);
+            alert("ネットワークエラーが発生しました。");
+          })
+          .finally(() => {
+            if (commentSubmitBtn) {
+              commentSubmitBtn.disabled = false;
+              commentSubmitBtn.textContent = '送信';
             }
           });
-
-          // Mouse wheel scroll forward from stage to panel (PC)
-          const stage = document.getElementById('main-visual-stage');
-          stage?.addEventListener('wheel', (e) => {
-            if (window.innerWidth > 960) {
-              const activePanel = document.querySelector('.panel-view-section.active');
-              if (activePanel) activePanel.scrollTop += e.deltaY;
-            }
-          }, { passive: true });
         }
+      }
 
-        // Initialize App
-        function initApp() {
-          renderCharactersView();
-          initFloatingDock();
-          initCursor();
-          init3DTilt();
-          initModalGestures();
-          setupEventListeners();
-          showCharactersView();
-        }
+      function initLikesAndComments() {
+        document.getElementById('work-like-btn')?.addEventListener('click', (e) => triggerLikeAnimation(e));
+        document.getElementById('modal-like-btn')?.addEventListener('click', (e) => triggerLikeAnimation(e));
 
-        if (document.readyState === 'loading') {
-          document.addEventListener('DOMContentLoaded', initApp);
-        } else {
-          initApp();
-        }
+        document.getElementById('work-comment-btn')?.addEventListener('click', openCommentModal);
+        document.getElementById('modal-comment-btn')?.addEventListener('click', openCommentModal);
 
-        // Astro page transitions support
-        document.addEventListener('astro:page-load', () => {
-          initApp();
+        document.getElementById('btn-close-comment-modal')?.addEventListener('click', closeCommentModal);
+        document.getElementById('btn-cancel-reply')?.addEventListener('click', cancelReply);
+        commentSubmitBtn?.addEventListener('click', submitComment);
+      }
+
+      // ============================================================
+      // CUSTOM CURSOR & 3D TILT
+      // ============================================================
+      function initCustomCursor() {
+        const cursor = document.getElementById('custom-cursor');
+        if (!cursor || window.matchMedia('(pointer: coarse)').matches) return;
+
+        let mouseX = window.innerWidth / 2;
+        let mouseY = window.innerHeight / 2;
+        let ringX = mouseX;
+        let ringY = mouseY;
+
+        window.addEventListener('mousemove', (e) => {
+          mouseX = e.clientX;
+          mouseY = e.clientY;
+          cursor.style.left = `${mouseX}px`;
+          cursor.style.top = `${mouseY}px`;
         });
-      })();
-    </script>
-  </body>
+
+        window.rebindCursorHovers = function() {
+          document.querySelectorAll('button, a, .char-select-card, .work-album-card, .photo-thumb-btn, .stage-photo-wrapper').forEach(el => {
+            el.addEventListener('mouseenter', () => {
+              if (el.classList.contains('stage-photo-wrapper')) {
+                cursor.classList.add('is-expand');
+              } else {
+                cursor.classList.add('is-hovering');
+              }
+            });
+            el.addEventListener('mouseleave', () => {
+              cursor.classList.remove('is-hovering', 'is-expand');
+            });
+          });
+        };
+
+        window.rebindCursorHovers();
+      }
+
+      function init3DTilt() {
+        const tiltEl = document.querySelector('.tilt-element');
+        if (!tiltEl || window.matchMedia('(pointer: coarse)').matches) return;
+
+        tiltEl.addEventListener('mousemove', (e) => {
+          const rect = tiltEl.getBoundingClientRect();
+          const x = e.clientX - rect.left;
+          const y = e.clientY - rect.top;
+          const centerX = rect.width / 2;
+          const centerY = rect.height / 2;
+          const rotateX = ((y - centerY) / centerY) * -6;
+          const rotateY = ((x - centerX) / centerX) * 6;
+
+          tiltEl.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg)`;
+        });
+
+        tiltEl.addEventListener('mouseleave', () => {
+          tiltEl.style.transform = 'perspective(1000px) rotateX(0deg) rotateY(0deg)';
+        });
+      }
+
+      function initKeyboardShortcuts() {
+        window.addEventListener('keydown', (e) => {
+          if (modal?.open || commentModal?.open) return;
+
+          if (e.key === 'Escape') {
+            const isPhotos = document.body.classList.contains('is-photos-view');
+            const isSubpage = document.body.classList.contains('is-subpage');
+            if (isPhotos) showWorksView(currentModelId);
+            else if (isSubpage) showCharactersView();
+          }
+        });
+      }
+
+      // 起動
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initApp);
+      } else {
+        initApp();
+      }
+    })();
+  </script>
+</body>
 </html>
