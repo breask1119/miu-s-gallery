@@ -203,6 +203,12 @@ const formattedGalleryData = (rawModels && rawModels.length > 0)
           guestComments: art.guestComments || [],
           promptData: art.promptData || '',
           hasArtworkImages: Boolean(art.hasArtworkImages),
+
+          // AIタグ
+          aiSummary: art.aiAnalysis?.summary || '',
+          aiTags: Array.isArray(art.aiTags) ? art.aiTags : [],
+          aiAnalysis: art.aiAnalysis || null,
+          hasAiTags: Boolean(art.hasAiTags),
         };
       });
 
@@ -990,19 +996,36 @@ const schemaLD = {
         // 作品アルバム一覧をレンダリング
         const worksContainer = document.getElementById('works-albums-list');
         if (worksContainer) {
-          worksContainer.innerHTML = model.works.map(w => `
-            <button class="work-album-card" data-work-id="${w.id}" aria-label="${w.title} の写真を閲覧">
-              <div class="work-album-cover">
-                <img src="${w.coverImage}" alt="${w.title}" loading="lazy" referrerpolicy="no-referrer">
-              </div>
-              <div class="work-album-info">
-                <h4 class="work-album-title">${w.title}</h4>
-                <div class="work-album-meta">
-                  <span class="work-photos-badge">${w.photos.length} Photos</span>
+          worksContainer.innerHTML = model.works.map(w => {
+            const displayTags = Array.isArray(w.aiTags)
+              ? w.aiTags.slice(0, 4)
+              : [];
+
+            const tagsHtml = displayTags.length > 0
+              ? `
+                <div class="work-ai-tags">
+                  ${displayTags.map(tag => `
+                    <span class="work-ai-tag">${tag}</span>
+                  `).join('')}
                 </div>
-              </div>
-            </button>
-          `).join('');
+              `
+              : '';
+
+            return `
+              <button class="work-album-card" data-work-id="${w.id}" aria-label="${w.title} の写真を閲覧">
+                <div class="work-album-cover">
+                  <img src="${w.coverImage}" alt="${w.title}" loading="lazy" referrerpolicy="no-referrer">
+                </div>
+                <div class="work-album-info">
+                  <h4 class="work-album-title">${w.title}</h4>
+                  <div class="work-album-meta">
+                    <span class="work-photos-badge">${w.photos.length} Photos</span>
+                  </div>
+                  ${tagsHtml}
+                </div>
+              </button>
+            `;
+          }).join('');
 
           worksContainer.querySelectorAll('.work-album-card').forEach(card => {
             card.addEventListener('click', () => {
