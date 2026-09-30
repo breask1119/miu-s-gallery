@@ -352,11 +352,9 @@ const schemaLD = {
   <script>
     import { registerSW } from 'virtual:pwa-register';
     if ('serviceWorker' in navigator) {
-      const updateSW = registerSW({
-        immediate: true,
-        onNeedRefresh() {
-          updateSW(true);
-        }
+      registerSW({
+        immediate: true
+        // 閲覧中の突然の強制リロードによるポップアップ消失を防ぐため、即時リロードは行わない
       });
     }
   </script>
@@ -972,8 +970,6 @@ const schemaLD = {
         const isIOS = /iphone|ipad|ipod/.test(userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
         const showPrompt = () => {
-          if (promptEl.classList.contains('is-visible')) return;
-
           const prompt = (window as any).__deferredPwaPrompt;
           if (prompt) {
             // Android Chrome等でbeforeinstallpromptが取れた場合（ワンタップボタン）
@@ -986,13 +982,16 @@ const schemaLD = {
             if (manualInstructions) manualInstructions.classList.add('hidden');
             if (installBtn) installBtn.classList.add('hidden');
           } else {
-            // Android等の手動メニュー案内（beforeinstallprompt非対応・消去済み時）
+            // Android等の手動メニュー案内（beforeinstallprompt非対応時）
             if (manualInstructions) manualInstructions.classList.remove('hidden');
             if (iosInstructions) iosInstructions.classList.add('hidden');
             if (installBtn) installBtn.classList.add('hidden');
           }
 
           promptEl.classList.add('is-visible');
+          promptEl.style.transform = 'translate(-50%, 0)';
+          promptEl.style.opacity = '1';
+          promptEl.style.visibility = 'visible';
         };
 
         (window as any).__triggerPwaPrompt = showPrompt;
@@ -1005,18 +1004,26 @@ const schemaLD = {
           setTimeout(showPrompt, 1800);
         }
 
-        closeBtn?.addEventListener('click', () => {
+        closeBtn?.addEventListener('click', (e) => {
+          e.stopPropagation();
           promptEl.classList.remove('is-visible');
+          promptEl.style.transform = 'translate(-50%, 180%)';
+          promptEl.style.opacity = '0';
+          promptEl.style.visibility = 'hidden';
           localStorage.setItem('miu_pwa_prompt_closed', 'true');
         });
 
-        installBtn?.addEventListener('click', async () => {
+        installBtn?.addEventListener('click', async (e) => {
+          e.stopPropagation();
           const prompt = (window as any).__deferredPwaPrompt;
           if (prompt) {
             prompt.prompt();
             const { outcome } = await prompt.userChoice;
             if (outcome === 'accepted') {
               promptEl.classList.remove('is-visible');
+              promptEl.style.transform = 'translate(-50%, 180%)';
+              promptEl.style.opacity = '0';
+              promptEl.style.visibility = 'hidden';
             }
             (window as any).__deferredPwaPrompt = null;
           }
