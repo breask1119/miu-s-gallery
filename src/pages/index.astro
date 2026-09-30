@@ -745,6 +745,35 @@ const schemaLD = {
     </div>
   </dialog>
 
+  <!-- PWA INSTALL PROMPT (Mobile & iOS) -->
+  <div id="pwa-install-prompt" class="fixed bottom-4 left-1/2 -translate-x-1/2 z-[300] w-[92%] max-w-sm bg-[#151518]/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-[0_10px_40px_rgba(0,0,0,0.8)] p-4 flex flex-col gap-3 translate-y-[150%] transition-transform duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] pointer-events-auto">
+    <div class="flex items-start justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl overflow-hidden shrink-0 border border-[#F43F5E]/50 bg-black">
+          <img src="/pwa-192x192.png" alt="App Icon" class="w-full h-full object-cover" />
+        </div>
+        <div>
+          <h3 class="text-white text-sm font-medium tracking-wide">アプリとして追加</h3>
+          <p class="text-gray-400 text-xs mt-0.5 leading-snug">ホーム画面に追加してフルスクリーンでお楽しみください</p>
+        </div>
+      </div>
+      <button id="pwa-close-btn" class="text-gray-500 hover:text-white transition-colors p-1 shrink-0 -mt-1 -mr-1" aria-label="閉じる">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+      </button>
+    </div>
+
+    <div id="pwa-ios-instructions" class="hidden text-xs text-gray-300 bg-white/5 rounded-lg p-3 border border-white/5">
+      <ol class="list-decimal list-inside space-y-1 ml-1">
+        <li>画面下部の <svg class="w-4 h-4 inline-block align-text-bottom mx-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg> 共有ボタンをタップ</li>
+        <li>「<span class="font-medium text-white">ホーム画面に追加</span>」をタップ</li>
+      </ol>
+    </div>
+
+    <button id="pwa-install-btn" class="hidden w-full bg-[#F43F5E] hover:bg-[#E11D48] text-white text-sm font-medium py-2.5 rounded-xl transition-colors shadow-[0_4px_12px_rgba(244,63,94,0.3)]">
+      インストールする
+    </button>
+  </div>
+
   <!-- クライアント用データペイロード (JSON) -->
   <script id="app-gallery-data" type="application/json" set:html={JSON.stringify({
     galleryData: formattedGalleryData,
@@ -880,6 +909,66 @@ const schemaLD = {
         return clean.charAt(0).toUpperCase() + clean.slice(1);
       }
 
+      // ============================================================
+      // PWA INSTALL PROMPT (Mobile & iOS)
+      // ============================================================
+      function initPwaPrompt() {
+        const promptEl = document.getElementById('pwa-install-prompt');
+        if (!promptEl) return;
+
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator && window.navigator.standalone);
+        const isClosed = localStorage.getItem('miu_pwa_prompt_closed');
+        const urlParams = new URLSearchParams(window.location.search);
+        const forcePwa = urlParams.has('pwa');
+
+        if ((isStandalone || isClosed) && !forcePwa) return;
+
+        const iosInstructions = document.getElementById('pwa-ios-instructions');
+        const installBtn = document.getElementById('pwa-install-btn');
+        const closeBtn = document.getElementById('pwa-close-btn');
+
+        const userAgent = window.navigator.userAgent.toLowerCase();
+        const isIOS = /iphone|ipad|ipod/.test(userAgent);
+
+        let deferredPrompt = null;
+
+        const showPrompt = () => {
+          if (isIOS) {
+            if (iosInstructions) iosInstructions.classList.remove('hidden');
+            promptEl.classList.remove('translate-y-[150%]');
+          } else if (deferredPrompt) {
+            if (installBtn) installBtn.classList.remove('hidden');
+            promptEl.classList.remove('translate-y-[150%]');
+          }
+        };
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+          e.preventDefault();
+          deferredPrompt = e;
+          setTimeout(showPrompt, 2500);
+        });
+
+        if (isIOS) {
+          setTimeout(showPrompt, 3000);
+        }
+
+        closeBtn?.addEventListener('click', () => {
+          promptEl.classList.add('translate-y-[150%]');
+          localStorage.setItem('miu_pwa_prompt_closed', 'true');
+        });
+
+        installBtn?.addEventListener('click', async () => {
+          if (deferredPrompt) {
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+            if (outcome === 'accepted') {
+              promptEl.classList.add('translate-y-[150%]');
+            }
+            deferredPrompt = null;
+          }
+        });
+      }
+
       function initApp() {
         bindCharactersViewEvents();
         initFloatingDock();
@@ -890,6 +979,7 @@ const schemaLD = {
         initKeyboardShortcuts();
         initAboutModal();
         initLikesAndComments();
+        initPwaPrompt();
 
         // 初期表示: ホーム画面（Hero Slider開始）
         showCharactersView();
