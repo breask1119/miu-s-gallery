@@ -397,6 +397,18 @@ const schemaLD = {
   <script define:vars={{ wpGraphqlUrl }}>
     window.WP_GRAPHQL_URL = wpGraphqlUrl;
   </script>
+
+  <!-- Immediate beforeinstallprompt capture -->
+  <script is:inline>
+    window.__deferredPwaPrompt = null;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      window.__deferredPwaPrompt = e;
+      if (typeof window.__triggerPwaPrompt === 'function') {
+        window.__triggerPwaPrompt();
+      }
+    });
+  </script>
 </head>
 <body class="bg-base text-slate-100 selection:bg-rose-500 selection:text-white">
 
@@ -746,7 +758,24 @@ const schemaLD = {
   </dialog>
 
   <!-- PWA INSTALL PROMPT (Mobile & iOS) -->
-  <div id="pwa-install-prompt" class="fixed bottom-4 left-1/2 -translate-x-1/2 z-[300] w-[92%] max-w-sm bg-[#151518]/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-[0_10px_40px_rgba(0,0,0,0.8)] p-4 flex flex-col gap-3 translate-y-[150%] transition-transform duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] pointer-events-auto">
+  <style>
+    #pwa-install-prompt {
+      position: fixed;
+      bottom: 1.25rem;
+      left: 50%;
+      transform: translate(-50%, 180%);
+      opacity: 0;
+      visibility: hidden;
+      transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.35s ease, visibility 0.45s;
+      z-index: 99999;
+    }
+    #pwa-install-prompt.is-visible {
+      transform: translate(-50%, 0) !important;
+      opacity: 1 !important;
+      visibility: visible !important;
+    }
+  </style>
+  <div id="pwa-install-prompt" class="w-[92%] max-w-sm bg-[#151518]/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-[0_10px_40px_rgba(0,0,0,0.8)] p-4 flex flex-col gap-3 pointer-events-auto">
     <div class="flex items-start justify-between gap-3">
       <div class="flex items-center gap-3">
         <div class="w-10 h-10 rounded-xl overflow-hidden shrink-0 border border-[#F43F5E]/50 bg-black">
@@ -762,6 +791,7 @@ const schemaLD = {
       </button>
     </div>
 
+    <!-- iOS手順 -->
     <div id="pwa-ios-instructions" class="hidden text-xs text-gray-300 bg-white/5 rounded-lg p-3 border border-white/5">
       <ol class="list-decimal list-inside space-y-1 ml-1">
         <li>画面下部の <svg class="w-4 h-4 inline-block align-text-bottom mx-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg> 共有ボタンをタップ</li>
@@ -769,6 +799,12 @@ const schemaLD = {
       </ol>
     </div>
 
+    <!-- Android / ブラウザ手動追加案内（beforeinstallprompt非対応時） -->
+    <div id="pwa-manual-instructions" class="hidden text-xs text-gray-300 bg-white/5 rounded-lg p-3 border border-white/5">
+      <p class="leading-relaxed">ブラウザ右上のメニュー「<strong class="text-white">︙</strong>」から「<strong class="text-white">アプリをインストール</strong>」または「<strong class="text-white">ホーム画面に追加</strong>」を選択してください。</p>
+    </div>
+
+    <!-- ワンタップインストールボタン（beforeinstallprompt検知時） -->
     <button id="pwa-install-btn" class="hidden w-full bg-[#F43F5E] hover:bg-[#E11D48] text-white text-sm font-medium py-2.5 rounded-xl transition-colors shadow-[0_4px_12px_rgba(244,63,94,0.3)]">
       インストールする
     </button>
@@ -916,55 +952,73 @@ const schemaLD = {
         const promptEl = document.getElementById('pwa-install-prompt');
         if (!promptEl) return;
 
-        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator && window.navigator.standalone);
-        const isClosed = localStorage.getItem('miu_pwa_prompt_closed');
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator && (window.navigator as any).standalone);
         const urlParams = new URLSearchParams(window.location.search);
         const forcePwa = urlParams.has('pwa');
 
-        if ((isStandalone || isClosed) && !forcePwa) return;
+        if (forcePwa) {
+          localStorage.removeItem('miu_pwa_prompt_closed');
+        }
+
+        const isClosed = localStorage.getItem('miu_pwa_prompt_closed');
+        if (isStandalone || (!forcePwa && isClosed)) return;
 
         const iosInstructions = document.getElementById('pwa-ios-instructions');
+        const manualInstructions = document.getElementById('pwa-manual-instructions');
         const installBtn = document.getElementById('pwa-install-btn');
         const closeBtn = document.getElementById('pwa-close-btn');
 
         const userAgent = window.navigator.userAgent.toLowerCase();
-        const isIOS = /iphone|ipad|ipod/.test(userAgent);
-
-        let deferredPrompt = null;
+        const isIOS = /iphone|ipad|ipod/.test(userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
         const showPrompt = () => {
-          if (isIOS) {
-            if (iosInstructions) iosInstructions.classList.remove('hidden');
-            promptEl.classList.remove('translate-y-[150%]');
-          } else if (deferredPrompt) {
+          if (promptEl.classList.contains('is-visible')) return;
+
+          const prompt = (window as any).__deferredPwaPrompt;
+          if (prompt) {
+            // Android Chrome等でbeforeinstallpromptが取れた場合（ワンタップボタン）
             if (installBtn) installBtn.classList.remove('hidden');
-            promptEl.classList.remove('translate-y-[150%]');
+            if (manualInstructions) manualInstructions.classList.add('hidden');
+            if (iosInstructions) iosInstructions.classList.add('hidden');
+          } else if (isIOS) {
+            // iPhone / iPad（Safari共有ボタン案内）
+            if (iosInstructions) iosInstructions.classList.remove('hidden');
+            if (manualInstructions) manualInstructions.classList.add('hidden');
+            if (installBtn) installBtn.classList.add('hidden');
+          } else {
+            // Android等の手動メニュー案内（beforeinstallprompt非対応・消去済み時）
+            if (manualInstructions) manualInstructions.classList.remove('hidden');
+            if (iosInstructions) iosInstructions.classList.add('hidden');
+            if (installBtn) installBtn.classList.add('hidden');
           }
+
+          promptEl.classList.add('is-visible');
         };
 
-        window.addEventListener('beforeinstallprompt', (e) => {
-          e.preventDefault();
-          deferredPrompt = e;
-          setTimeout(showPrompt, 2500);
-        });
+        (window as any).__triggerPwaPrompt = showPrompt;
 
-        if (isIOS) {
-          setTimeout(showPrompt, 3000);
+        // すでに beforeinstallprompt がキャッチされている場合は即座または少し待って表示
+        if ((window as any).__deferredPwaPrompt) {
+          setTimeout(showPrompt, 1200);
+        } else {
+          // iOS またはフォールバック用：1.8秒後に表示
+          setTimeout(showPrompt, 1800);
         }
 
         closeBtn?.addEventListener('click', () => {
-          promptEl.classList.add('translate-y-[150%]');
+          promptEl.classList.remove('is-visible');
           localStorage.setItem('miu_pwa_prompt_closed', 'true');
         });
 
         installBtn?.addEventListener('click', async () => {
-          if (deferredPrompt) {
-            deferredPrompt.prompt();
-            const { outcome } = await deferredPrompt.userChoice;
+          const prompt = (window as any).__deferredPwaPrompt;
+          if (prompt) {
+            prompt.prompt();
+            const { outcome } = await prompt.userChoice;
             if (outcome === 'accepted') {
-              promptEl.classList.add('translate-y-[150%]');
+              promptEl.classList.remove('is-visible');
             }
-            deferredPrompt = null;
+            (window as any).__deferredPwaPrompt = null;
           }
         });
       }
