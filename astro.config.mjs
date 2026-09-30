@@ -27,6 +27,8 @@ export default defineConfig({
         name: "Miu's Gallery | AI Girls Gallery",
         short_name: "Miu's Gallery",
         description: "Tactile Maximalism & Bento Grid Gallery",
+        start_url: "/",
+        scope: "/",
         theme_color: "#050505",
         background_color: "#050505",
         display: "standalone", // ネイティブアプリのようにブラウザUIを非表示にします
