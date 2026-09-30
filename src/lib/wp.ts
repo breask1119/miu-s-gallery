@@ -1,4 +1,6 @@
 // src/lib/wp.ts
+import fs from "node:fs";
+import path from "node:path";
 import { getDistributionByRating } from "./distribution";
 
 export const DEFAULT_WP_GRAPHQL_URL =
@@ -1074,6 +1076,59 @@ export async function getGalleryData() {
         },
       }),
     );
+
+  const cachePath = path.resolve(process.cwd(), "src/data/gallery-cache.json");
+
+  // 正常にデータが取得できた場合は最新キャッシュとして保存
+  if (models && models.length > 0) {
+    try {
+      const cacheDir = path.dirname(cachePath);
+      if (!fs.existsSync(cacheDir)) {
+        fs.mkdirSync(cacheDir, { recursive: true });
+      }
+      fs.writeFileSync(
+        cachePath,
+        JSON.stringify(
+          {
+            siteInfo: data?.generalSettings || { title: "Gallery", description: "" },
+            sliders: data?.sliders?.nodes || [],
+            models,
+            cachedAt: new Date().toISOString(),
+          },
+          null,
+          2
+        ),
+        "utf8"
+      );
+      console.log(`[wp.ts] Successfully cached gallery data (${models.length} models) to ${cachePath}`);
+    } catch (err) {
+      console.warn("[wp.ts] Failed to write cache:", err);
+    }
+  } else {
+    // データが0件の場合（WordPress一時障害やタイムアウト時）：以前の正常キャッシュから自動復元！
+    console.warn("⚠️ [wp.ts] models count is 0! Attempting to restore from local cache...");
+    if (fs.existsSync(cachePath)) {
+      try {
+        const cachedRaw = fs.readFileSync(cachePath, "utf8");
+        const cachedData = JSON.parse(cachedRaw);
+        if (cachedData.models && cachedData.models.length > 0) {
+          console.log(`✅ [wp.ts] Restored ${cachedData.models.length} models from cache! (Cached at: ${cachedData.cachedAt})`);
+          return {
+            siteInfo: cachedData.siteInfo || { title: "Gallery", description: "" },
+            sliders: cachedData.sliders || [],
+            models: cachedData.models,
+            debugLog: {
+              ...debugLog,
+              restoredFromCache: true,
+              cachedAt: cachedData.cachedAt,
+            },
+          };
+        }
+      } catch (err) {
+        console.error("🚨 [wp.ts] Failed to restore from cache:", err);
+      }
+    }
+  }
 
   return {
     siteInfo:

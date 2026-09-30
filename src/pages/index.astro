@@ -453,6 +453,16 @@ const schemaLD = {
             <line x1="12" y1="8" x2="12.01" y2="8"></line>
           </svg>
         </button>
+
+        <!-- PWA Install / Home Button -->
+        <button id="header-pwa-btn" class="social-icon-btn pwa-header-install-btn" aria-label="アプリとしてホーム画面に追加" title="ホーム画面に追加">
+          <svg class="social-svg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+            <line x1="12" y1="18" x2="12.01" y2="18"></line>
+            <polyline points="9 9 12 12 15 9"></polyline>
+            <line x1="12" y1="6" x2="12" y2="12"></line>
+          </svg>
+        </button>
       </div>
     </div>
   </div>
@@ -751,59 +761,55 @@ const schemaLD = {
           <li><strong>全画面拡大:</strong> メイン写真をタップすると、高精細ズームモーダルが起動。</li>
           <li><strong>キーボード操作:</strong> <kbd>Esc</kbd> で1階層戻る / モーダルを閉じる、<kbd>←</kbd> <kbd>→</kbd> で写真送り。</li>
         </ul>
+
+        <!-- PWA Manual Trigger in About Modal -->
+        <div class="mt-6 pt-5 border-t border-white/10 flex flex-col gap-2">
+          <button id="about-pwa-btn" type="button" class="w-full flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl bg-gradient-to-r from-rose-500/20 to-pink-500/20 hover:from-rose-500/30 hover:to-pink-500/30 border border-rose-500/30 text-rose-300 hover:text-white font-medium text-xs transition-all">
+            <svg class="w-4 h-4 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+              <line x1="12" y1="18" x2="12.01" y2="18"></line>
+              <polyline points="9 9 12 12 15 9"></polyline>
+              <line x1="12" y1="6" x2="12" y2="12"></line>
+            </svg>
+            <span>ホーム画面にアプリを追加する</span>
+          </button>
+        </div>
       </div>
     </div>
   </dialog>
 
-  <!-- PWA INSTALL PROMPT (Mobile & iOS) -->
-  <style>
-    #pwa-install-prompt {
-      position: fixed;
-      bottom: 1.25rem;
-      left: 50%;
-      transform: translate(-50%, 180%);
-      opacity: 0;
-      visibility: hidden;
-      transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.35s ease, visibility 0.45s;
-      z-index: 99999;
-    }
-    #pwa-install-prompt.is-visible {
-      transform: translate(-50%, 0) !important;
-      opacity: 1 !important;
-      visibility: visible !important;
-    }
-  </style>
-  <div id="pwa-install-prompt" class="w-[92%] max-w-sm bg-[#151518]/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-[0_10px_40px_rgba(0,0,0,0.8)] p-4 flex flex-col gap-3 pointer-events-auto">
+  <!-- PWA INSTALL PROMPT (Mobile & iOS & Desktop) -->
+  <div id="pwa-install-prompt" role="alert" aria-live="polite">
     <div class="flex items-start justify-between gap-3">
       <div class="flex items-center gap-3">
-        <div class="w-10 h-10 rounded-xl overflow-hidden shrink-0 border border-[#F43F5E]/50 bg-black">
+        <div class="w-10 h-10 rounded-xl overflow-hidden shrink-0 border border-[#F43F5E]/50 bg-black shadow-md">
           <img src="/pwa-192x192.png" alt="App Icon" class="w-full h-full object-cover" />
         </div>
         <div>
-          <h3 class="text-white text-sm font-medium tracking-wide">アプリとして追加</h3>
-          <p class="text-gray-400 text-xs mt-0.5 leading-snug">ホーム画面に追加してフルスクリーンでお楽しみください</p>
+          <h3 class="text-white text-sm font-semibold tracking-wide">アプリとして追加</h3>
+          <p class="text-gray-300 text-xs mt-0.5 leading-snug">ホーム画面に追加してフルスクリーンでお楽しみください</p>
         </div>
       </div>
-      <button id="pwa-close-btn" class="text-gray-500 hover:text-white transition-colors p-1 shrink-0 -mt-1 -mr-1" aria-label="閉じる">
+      <button id="pwa-close-btn" class="text-gray-400 hover:text-white transition-colors p-1.5 shrink-0 -mt-1 -mr-1 rounded-lg hover:bg-white/10" aria-label="閉じる">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
       </button>
     </div>
 
-    <!-- iOS手順 -->
-    <div id="pwa-ios-instructions" class="hidden text-xs text-gray-300 bg-white/5 rounded-lg p-3 border border-white/5">
-      <ol class="list-decimal list-inside space-y-1 ml-1">
-        <li>画面下部の <svg class="w-4 h-4 inline-block align-text-bottom mx-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg> 共有ボタンをタップ</li>
-        <li>「<span class="font-medium text-white">ホーム画面に追加</span>」をタップ</li>
+    <!-- iOS手順案内 -->
+    <div id="pwa-ios-instructions" class="hidden text-xs text-gray-200 bg-white/10 rounded-xl p-3 border border-white/10 shadow-inner">
+      <ol class="list-decimal list-inside space-y-1.5 ml-1">
+        <li>Safari下部の <svg class="w-4 h-4 inline-block align-text-bottom mx-0.5 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg> 共有ボタンをタップ</li>
+        <li>メニュー内の「<span class="font-bold text-white underline decoration-rose-400 underline-offset-2">ホーム画面に追加</span>」をタップ</li>
       </ol>
     </div>
 
     <!-- Android / ブラウザ手動追加案内（beforeinstallprompt非対応時） -->
-    <div id="pwa-manual-instructions" class="hidden text-xs text-gray-300 bg-white/5 rounded-lg p-3 border border-white/5">
-      <p class="leading-relaxed">ブラウザ右上のメニュー「<strong class="text-white">︙</strong>」から「<strong class="text-white">アプリをインストール</strong>」または「<strong class="text-white">ホーム画面に追加</strong>」を選択してください。</p>
+    <div id="pwa-manual-instructions" class="hidden text-xs text-gray-200 bg-white/10 rounded-xl p-3 border border-white/10 shadow-inner">
+      <p class="leading-relaxed">ブラウザ右上のメニュー「<strong class="text-white">︙</strong>」から「<strong class="text-white underline decoration-rose-400 underline-offset-2">アプリをインストール</strong>」または「<strong class="text-white underline decoration-rose-400 underline-offset-2">ホーム画面に追加</strong>」を選択してください。</p>
     </div>
 
     <!-- ワンタップインストールボタン（beforeinstallprompt検知時） -->
-    <button id="pwa-install-btn" class="hidden w-full bg-[#F43F5E] hover:bg-[#E11D48] text-white text-sm font-medium py-2.5 rounded-xl transition-colors shadow-[0_4px_12px_rgba(244,63,94,0.3)]">
+    <button id="pwa-install-btn" class="hidden w-full bg-[#F43F5E] hover:bg-[#E11D48] active:scale-[0.98] text-white text-sm font-semibold py-2.5 rounded-xl transition-all shadow-[0_4px_16px_rgba(244,63,94,0.4)]">
       インストールする
     </button>
   </div>
@@ -944,7 +950,7 @@ const schemaLD = {
       }
 
       // ============================================================
-      // PWA INSTALL PROMPT (Mobile & iOS)
+      // PWA INSTALL PROMPT (Mobile & iOS & Desktop)
       // ============================================================
       function initPwaPrompt() {
         const promptEl = document.getElementById('pwa-install-prompt');
@@ -954,12 +960,22 @@ const schemaLD = {
         const urlParams = new URLSearchParams(window.location.search);
         const forcePwa = urlParams.has('pwa');
 
-        if (forcePwa) {
-          localStorage.removeItem('miu_pwa_prompt_closed');
+        const headerBtn = document.getElementById('header-pwa-btn');
+        const aboutInstallBtn = document.getElementById('about-pwa-btn');
+
+        // すでにネイティブアプリとしてインストール・起動中の場合はボタン類を非表示
+        if (isStandalone) {
+          if (headerBtn) headerBtn.style.display = 'none';
+          if (aboutInstallBtn) aboutInstallBtn.style.display = 'none';
+          return;
         }
 
-        const isClosed = localStorage.getItem('miu_pwa_prompt_closed');
-        if (isStandalone || (!forcePwa && isClosed)) return;
+        const DISMISS_KEY = 'miu_pwa_dismiss_until';
+        // 過去の永久非表示キーを削除してリセット
+        localStorage.removeItem('miu_pwa_prompt_closed');
+
+        const dismissUntil = parseInt(localStorage.getItem(DISMISS_KEY) || '0', 10);
+        const isDismissed = !forcePwa && (Date.now() < dismissUntil);
 
         const iosInstructions = document.getElementById('pwa-ios-instructions');
         const manualInstructions = document.getElementById('pwa-manual-instructions');
@@ -969,7 +985,11 @@ const schemaLD = {
         const userAgent = window.navigator.userAgent.toLowerCase();
         const isIOS = /iphone|ipad|ipod/.test(userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
-        const showPrompt = () => {
+        const showPrompt = (isManual = false) => {
+          if (!isManual && isDismissed) {
+            return;
+          }
+
           const prompt = (window as any).__deferredPwaPrompt;
           if (prompt) {
             // Android Chrome等でbeforeinstallpromptが取れた場合（ワンタップボタン）
@@ -982,35 +1002,50 @@ const schemaLD = {
             if (manualInstructions) manualInstructions.classList.add('hidden');
             if (installBtn) installBtn.classList.add('hidden');
           } else {
-            // Android等の手動メニュー案内（beforeinstallprompt非対応時）
+            // その他（手動メニュー追加案内）
             if (manualInstructions) manualInstructions.classList.remove('hidden');
             if (iosInstructions) iosInstructions.classList.add('hidden');
             if (installBtn) installBtn.classList.add('hidden');
           }
 
           promptEl.classList.add('is-visible');
-          promptEl.style.transform = 'translate(-50%, 0)';
-          promptEl.style.opacity = '1';
-          promptEl.style.visibility = 'visible';
         };
 
-        (window as any).__triggerPwaPrompt = showPrompt;
+        const hidePrompt = (persistDismiss = true) => {
+          promptEl.classList.remove('is-visible');
+          if (persistDismiss) {
+            // 閉じた場合は12時間自動ポップアップを抑制
+            localStorage.setItem(DISMISS_KEY, (Date.now() + 12 * 60 * 60 * 1000).toString());
+          }
+        };
 
-        // すでに beforeinstallprompt がキャッチされている場合は即座または少し待って表示
-        if ((window as any).__deferredPwaPrompt) {
-          setTimeout(showPrompt, 1200);
-        } else {
-          // iOS またはフォールバック用：1.8秒後に表示
-          setTimeout(showPrompt, 1800);
+        (window as any).__triggerPwaPrompt = (manual = false) => showPrompt(manual);
+
+        // ヘッダーボタン・Aboutモーダル内のボタンから手動表示
+        headerBtn?.addEventListener('click', (e) => {
+          e.preventDefault();
+          showPrompt(true);
+        });
+
+        aboutInstallBtn?.addEventListener('click', (e) => {
+          e.preventDefault();
+          const infoModal = document.getElementById('info-modal') as HTMLDialogElement;
+          infoModal?.close();
+          showPrompt(true);
+        });
+
+        // 自動表示（未閉鎖時または?pwa指定時）
+        if (!isDismissed || forcePwa) {
+          if ((window as any).__deferredPwaPrompt) {
+            setTimeout(() => showPrompt(false), 1200);
+          } else {
+            setTimeout(() => showPrompt(false), 1800);
+          }
         }
 
         closeBtn?.addEventListener('click', (e) => {
           e.stopPropagation();
-          promptEl.classList.remove('is-visible');
-          promptEl.style.transform = 'translate(-50%, 180%)';
-          promptEl.style.opacity = '0';
-          promptEl.style.visibility = 'hidden';
-          localStorage.setItem('miu_pwa_prompt_closed', 'true');
+          hidePrompt(true);
         });
 
         installBtn?.addEventListener('click', async (e) => {
@@ -1020,10 +1055,7 @@ const schemaLD = {
             prompt.prompt();
             const { outcome } = await prompt.userChoice;
             if (outcome === 'accepted') {
-              promptEl.classList.remove('is-visible');
-              promptEl.style.transform = 'translate(-50%, 180%)';
-              promptEl.style.opacity = '0';
-              promptEl.style.visibility = 'hidden';
+              hidePrompt(true);
             }
             (window as any).__deferredPwaPrompt = null;
           }
@@ -1071,11 +1103,20 @@ const schemaLD = {
           showWorksView(currentModelId);
         });
 
-        // メインビジュアルクリックで全画面ライトボックス展開
+        // メインビジュアルクリック処理
         document.getElementById('stage-photo-wrapper')?.addEventListener('click', () => {
           if (isHeroSliderActive || !document.body.classList.contains('is-subpage')) {
+            // トップページでスライダー動作中の場合：現在表示中のモデルの作品アルバム一覧へ移動！
+            const currentSlide = heroSliderList[heroSliderIndex];
+            const targetCharId = currentSlide?.characterId;
+            if (targetCharId && targetCharId !== 'featured') {
+              showWorksView(targetCharId);
+            } else if (galleryData[0]?.id) {
+              showWorksView(galleryData[0].id);
+            }
             return;
           }
+          // 作品詳細時：高精細モーダルを展開
           const activePhoto = currentPhotosInWork[currentPhotoIndex];
           if (activePhoto) openModal(activePhoto.id);
         });
@@ -1291,9 +1332,12 @@ const schemaLD = {
         document.body.classList.toggle('is-subpage', isSubpage);
         document.body.classList.toggle('is-photos-view', isPhotosView);
 
-        if (window.innerWidth <= 960) {
-          window.scrollTo({ top: 0, behavior: 'instant' });
-        }
+        // スクロール位置のリセット（モバイル＆PC）
+        window.scrollTo({ top: 0, behavior: 'instant' });
+        const sidePanel = document.getElementById('side-content-panel');
+        if (sidePanel) sidePanel.scrollTop = 0;
+        const targetView = document.getElementById(viewId);
+        if (targetView) targetView.scrollTop = 0;
 
         document.getElementById('character-floating-dock')?.classList.toggle('visible', isSubpage);
         document.getElementById('side-content-panel')?.classList.toggle('has-floating-dock', isSubpage);
@@ -1302,8 +1346,22 @@ const schemaLD = {
       // ============================================================
       // MAIN STAGE PHOTO CONTROLLER
       // ============================================================
+      function updateExpandPromptLabel(isSlider) {
+        const pcText = document.querySelector('.photo-expand-prompt .pc-text');
+        const spText = document.querySelector('.photo-expand-prompt .sp-text');
+        if (isSlider) {
+          if (pcText) pcText.textContent = 'CLICK TO VIEW ALBUM';
+          if (spText) spText.textContent = 'TAP TO VIEW ALBUM';
+        } else {
+          if (pcText) pcText.textContent = 'CLICK TO EXPAND';
+          if (spText) spText.textContent = 'TAP TO EXPAND';
+        }
+      }
+
       function setMainStagePhoto(photo, work, model) {
         if (!photo) return;
+
+        updateExpandPromptLabel(false);
 
         const mainImg = document.getElementById('main-stage-img');
         const blurImg = document.getElementById('stage-blur-img');
@@ -1462,6 +1520,7 @@ const schemaLD = {
         });
 
         morphCharacterColor(currentSlide.color, currentSlide.rgb);
+        updateExpandPromptLabel(true);
 
         if (mainImg) {
           mainImg.style.opacity = '0.3';
