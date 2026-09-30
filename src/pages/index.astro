@@ -6,7 +6,7 @@ import '../styles/app.scss';
 import { getGalleryData, DEFAULT_WP_GRAPHQL_URL } from '../lib/wp';
 
 // 1. WordPress (WPGraphQL + REST API ハイブリッド) からデータ取得
-const { siteInfo, sliders, models: rawModels, debugLog } = await getGalleryData();
+const { siteInfo, sliders, models: rawModels, latestArtwork, debugLog } = await getGalleryData();
 
 // 画像URLのHTTPS化およびWordPressオリジン正規化ヘルパー
 const wpGraphqlUrl = (import.meta.env.PUBLIC_WP_GRAPHQL_URL || DEFAULT_WP_GRAPHQL_URL || '').trim();
@@ -226,8 +226,51 @@ const formattedGalleryData = (rawModels && rawModels.length > 0)
     })
   : [];
 
-// トップ画面の自動スライダー用データ
-const heroSliderList = (sliders && sliders.length > 0)
+// 最新投稿（最新作）のアイキャッチ画像・タイトル情報の構築
+let latestSlideItem: any = null;
+
+if (latestArtwork) {
+  const modelNode = latestArtwork.models?.nodes?.[0];
+  const matchedModel = rawModels?.find((m: any) =>
+    m.name === modelNode?.name || m.slug === modelNode?.slug
+  ) || rawModels?.[0];
+
+  const mName = matchedModel?.name || modelNode?.name || "美羽";
+  const mSlug = matchedModel?.slug || modelNode?.slug || "miu";
+  const mColor = getValidColor(matchedModel?.memberColor || modelNode?.memberColor);
+  const featImg = secureUrl(latestArtwork.featuredImage?.node?.sourceUrl) || placeholderImg;
+
+  latestSlideItem = {
+    id: `slider-latest-${latestArtwork.databaseId || latestArtwork.id || 'new'}`,
+    title: latestArtwork.title || '最新作',
+    workTitle: latestArtwork.title || '最新作',
+    image: featImg,
+    modelName: formatModelDisplayName(mName, mSlug),
+    characterId: mSlug,
+    workId: latestArtwork.slug || latestArtwork.title || (latestArtwork.databaseId ? String(latestArtwork.databaseId) : 'latest'),
+    color: mColor,
+    rgb: hexToRgbString(mColor),
+    isLatestPost: true,
+  };
+} else if (formattedGalleryData.length > 0 && formattedGalleryData[0].works.length > 0) {
+  const firstModel = formattedGalleryData[0];
+  const firstWork = firstModel.works[0];
+  latestSlideItem = {
+    id: `slider-latest-${firstWork.databaseId || firstWork.id}`,
+    title: firstWork.title,
+    workTitle: firstWork.title,
+    image: firstWork.coverImage || placeholderImg,
+    modelName: firstModel.name,
+    characterId: firstModel.id,
+    workId: firstWork.id,
+    color: firstModel.color,
+    rgb: firstModel.rgb,
+    isLatestPost: true,
+  };
+}
+
+// ベースのスライダー用データ（各モデル紹介スライダー）
+const baseSliders = (sliders && sliders.length > 0)
   ? sliders.map((s: any, idx: number) => {
       const src = secureUrl(s.featuredImage?.node?.sourceUrl) || placeholderImg;
       const sColor = getValidColor(s.memberColor);
@@ -244,6 +287,7 @@ const heroSliderList = (sliders && sliders.length > 0)
         characterId: matchedModel?.slug || 'featured',
         color: sColor,
         rgb: hexToRgbString(sColor),
+        isLatestPost: false,
       };
     })
   : formattedGalleryData.map((c: any) => {
@@ -256,8 +300,14 @@ const heroSliderList = (sliders && sliders.length > 0)
         workTitle: firstWork.title || c.name,
         color: c.color,
         rgb: c.rgb,
+        isLatestPost: false,
       };
     });
+
+// トップ画面の自動スライダー用データ: 1枚目に「最新投稿（アイキャッチ画像＆タイトル）」を確実に配置！
+const heroSliderList = latestSlideItem
+  ? [latestSlideItem, ...baseSliders]
+  : baseSliders;
 
 // 全写真フラット配列
 const allPhotosFlat = formattedGalleryData.flatMap((model: any) =>
@@ -492,8 +542,8 @@ const schemaLD = {
         <div class="photo-expand-prompt">
           <span class="prompt-pill">
             <i data-lucide="maximize-2" class="w-3.5 h-3.5"></i>
-            <span class="pc-text">CLICK TO EXPAND</span>
-            <span class="sp-text">TAP TO EXPAND</span>
+            <span class="pc-text">{heroSliderList[0]?.isLatestPost ? `VIEW "${heroSliderList[0]?.title}"` : 'CLICK TO VIEW ALBUM'}</span>
+            <span class="sp-text">{heroSliderList[0]?.isLatestPost ? `VIEW "${heroSliderList[0]?.title}"` : 'TAP TO VIEW ALBUM'}</span>
           </span>
         </div>
       </div>
@@ -502,7 +552,11 @@ const schemaLD = {
       <div class="stage-title-overlay" id="stage-title-overlay">
         <div class="stage-char-badge" id="stage-char-badge">
           <span class="stage-color-chip" id="stage-color-chip" style={`background-color: ${heroSliderList[0]?.color || '#0b0b0b'};`}></span>
-          <h1 class="stage-badge-text" id="stage-badge-name">{getRomajiName(heroSliderList[0]?.modelName || "美羽 / Miu", heroSliderList[0]?.characterId)}</h1>
+          <h1 class="stage-badge-text" id="stage-badge-name">
+            {heroSliderList[0]?.isLatestPost
+              ? `NEW: ${heroSliderList[0]?.title}`
+              : getRomajiName(heroSliderList[0]?.modelName || "美羽 / Miu", heroSliderList[0]?.characterId)}
+          </h1>
         </div>
       </div>
 
@@ -1110,11 +1164,14 @@ const schemaLD = {
         // メインビジュアルクリック処理
         document.getElementById('stage-photo-wrapper')?.addEventListener('click', () => {
           if (isHeroSliderActive || !document.body.classList.contains('is-subpage')) {
-            // トップページでスライダー動作中の場合：現在表示中のモデルの作品アルバム一覧へ移動！
+            // トップページでスライダー動作中の場合
             const currentSlide = heroSliderList[heroSliderIndex];
-            const targetCharId = currentSlide?.characterId;
-            if (targetCharId && targetCharId !== 'featured') {
-              showWorksView(targetCharId);
+            if (currentSlide?.isLatestPost && currentSlide?.workId && currentSlide?.characterId) {
+              // 最新作スライドの場合：モデル作品一覧を開いた上で、その作品アルバムを直接展開！
+              showWorksView(currentSlide.characterId);
+              showPhotosView(currentSlide.workId);
+            } else if (currentSlide?.characterId && currentSlide.characterId !== 'featured') {
+              showWorksView(currentSlide.characterId);
             } else if (galleryData[0]?.id) {
               showWorksView(galleryData[0].id);
             }
@@ -1350,10 +1407,13 @@ const schemaLD = {
       // ============================================================
       // MAIN STAGE PHOTO CONTROLLER
       // ============================================================
-      function updateExpandPromptLabel(isSlider) {
+      function updateExpandPromptLabel(isSlider, customLabel) {
         const pcText = document.querySelector('.photo-expand-prompt .pc-text');
         const spText = document.querySelector('.photo-expand-prompt .sp-text');
-        if (isSlider) {
+        if (customLabel) {
+          if (pcText) pcText.textContent = `CLICK TO ${customLabel}`;
+          if (spText) spText.textContent = `TAP TO ${customLabel}`;
+        } else if (isSlider) {
           if (pcText) pcText.textContent = 'CLICK TO VIEW ALBUM';
           if (spText) spText.textContent = 'TAP TO VIEW ALBUM';
         } else {
@@ -1517,14 +1577,21 @@ const schemaLD = {
         const stageBadgeName = document.getElementById('stage-badge-name');
 
         if (stageColorChip) stageColorChip.style.backgroundColor = currentSlide.color;
-        if (stageBadgeName) stageBadgeName.textContent = getRomajiName(currentSlide.modelName, currentSlide.characterId);
+
+        if (currentSlide.isLatestPost) {
+          const charName = getRomajiName(currentSlide.modelName, currentSlide.characterId);
+          if (stageBadgeName) stageBadgeName.textContent = `NEW: ${currentSlide.title} (${charName})`;
+          updateExpandPromptLabel(true, `VIEW "${currentSlide.title}"`);
+        } else {
+          if (stageBadgeName) stageBadgeName.textContent = getRomajiName(currentSlide.modelName, currentSlide.characterId);
+          updateExpandPromptLabel(true);
+        }
 
         document.querySelectorAll('.stage-slider-dots .slider-dot').forEach((dot, i) => {
           dot.classList.toggle('active', i === heroSliderIndex);
         });
 
         morphCharacterColor(currentSlide.color, currentSlide.rgb);
-        updateExpandPromptLabel(true);
 
         if (mainImg) {
           mainImg.style.opacity = '0.3';

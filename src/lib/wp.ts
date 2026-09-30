@@ -782,6 +782,37 @@ export async function getGalleryData() {
             description
           }
 
+          latestArtwork: artworks(
+            first: 1
+            where: {
+              orderby: {
+                field: DATE
+                order: DESC
+              }
+            }
+          ) {
+            nodes {
+              id
+              databaseId
+              title
+              slug
+              date
+              featuredImage {
+                node {
+                  sourceUrl
+                }
+              }
+              models {
+                nodes {
+                  id
+                  name
+                  slug
+                  memberColor
+                }
+              }
+            }
+          }
+
           sliders(
             first: 50
             where: {
@@ -1079,6 +1110,8 @@ export async function getGalleryData() {
 
   const cachePath = path.resolve(process.cwd(), "src/data/gallery-cache.json");
 
+  const rawLatestArtwork = data?.latestArtwork?.nodes?.[0] || null;
+
   // 正常にデータが取得できた場合は最新キャッシュとして保存
   if (models && models.length > 0) {
     try {
@@ -1093,6 +1126,7 @@ export async function getGalleryData() {
             siteInfo: data?.generalSettings || { title: "Gallery", description: "" },
             sliders: data?.sliders?.nodes || [],
             models,
+            latestArtwork: rawLatestArtwork,
             cachedAt: new Date().toISOString(),
           },
           null,
@@ -1117,6 +1151,7 @@ export async function getGalleryData() {
             siteInfo: cachedData.siteInfo || { title: "Gallery", description: "" },
             sliders: cachedData.sliders || [],
             models: cachedData.models,
+            latestArtwork: cachedData.latestArtwork || null,
             debugLog: {
               ...debugLog,
               restoredFromCache: true,
@@ -1148,6 +1183,8 @@ export async function getGalleryData() {
       [],
 
     models,
+
+    latestArtwork: rawLatestArtwork,
 
     debugLog,
   };

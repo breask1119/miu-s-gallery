@@ -42610,5 +42610,27 @@
       }
     }
   ],
-  "cachedAt": "2026-09-30T23:19:08.497Z"
+  "latestArtwork": {
+    "id": "cG9zdDoxNjQ1",
+    "databaseId": 1645,
+    "title": "紅葉露天",
+    "slug": "紅葉露天",
+    "date": "2026-09-30T20:00:00",
+    "featuredImage": {
+      "node": {
+        "sourceUrl": "https://api.xx-ai-girls-miu.com/wp-content/uploads/01-43.png"
+      }
+    },
+    "models": {
+      "nodes": [
+        {
+          "id": "dGVybToy",
+          "name": "美羽",
+          "slug": "miu",
+          "memberColor": "#0b0b0b"
+        }
+      ]
+    }
+  },
+  "cachedAt": "2026-09-30T23:33:31.485Z"
 }
