@@ -359,11 +359,13 @@ const schemaLD = {
     }
   </script>
 
-  <!-- OneSignal -->
   <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
   <script is:inline>
     window.OneSignalDeferred = window.OneSignalDeferred || [];
     OneSignalDeferred.push(async function(OneSignal) {
+      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        return;
+      }
       await OneSignal.init({
         appId: "06418ce1-102a-4a7b-a88b-069b594cf919",
         promptOptions: {
@@ -956,7 +958,7 @@ const schemaLD = {
         const promptEl = document.getElementById('pwa-install-prompt');
         if (!promptEl) return;
 
-        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator && (window.navigator as any).standalone);
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator && window.navigator.standalone);
         const urlParams = new URLSearchParams(window.location.search);
         const forcePwa = urlParams.has('pwa');
 
@@ -990,7 +992,7 @@ const schemaLD = {
             return;
           }
 
-          const prompt = (window as any).__deferredPwaPrompt;
+          const prompt = window.__deferredPwaPrompt;
           if (prompt) {
             // Android Chrome等でbeforeinstallpromptが取れた場合（ワンタップボタン）
             if (installBtn) installBtn.classList.remove('hidden');
@@ -1019,7 +1021,7 @@ const schemaLD = {
           }
         };
 
-        (window as any).__triggerPwaPrompt = (manual = false) => showPrompt(manual);
+        window.__triggerPwaPrompt = (manual = false) => showPrompt(manual);
 
         // ヘッダーボタン・Aboutモーダル内のボタンから手動表示
         headerBtn?.addEventListener('click', (e) => {
@@ -1029,14 +1031,16 @@ const schemaLD = {
 
         aboutInstallBtn?.addEventListener('click', (e) => {
           e.preventDefault();
-          const infoModal = document.getElementById('info-modal') as HTMLDialogElement;
-          infoModal?.close();
+          const infoModal = document.getElementById('info-modal');
+          if (infoModal && typeof infoModal.close === 'function') {
+            infoModal.close();
+          }
           showPrompt(true);
         });
 
         // 自動表示（未閉鎖時または?pwa指定時）
         if (!isDismissed || forcePwa) {
-          if ((window as any).__deferredPwaPrompt) {
+          if (window.__deferredPwaPrompt) {
             setTimeout(() => showPrompt(false), 1200);
           } else {
             setTimeout(() => showPrompt(false), 1800);
@@ -1050,14 +1054,14 @@ const schemaLD = {
 
         installBtn?.addEventListener('click', async (e) => {
           e.stopPropagation();
-          const prompt = (window as any).__deferredPwaPrompt;
+          const prompt = window.__deferredPwaPrompt;
           if (prompt) {
             prompt.prompt();
             const { outcome } = await prompt.userChoice;
             if (outcome === 'accepted') {
               hidePrompt(true);
             }
-            (window as any).__deferredPwaPrompt = null;
+            window.__deferredPwaPrompt = null;
           }
         });
       }
