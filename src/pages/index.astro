@@ -418,6 +418,10 @@ const schemaLD = {
       }
       await OneSignal.init({
         appId: "06418ce1-102a-4a7b-a88b-069b594cf919",
+        serviceWorkerPath: "push/onesignal/OneSignalSDKWorker.js",
+        serviceWorkerParam: {
+          scope: "/push/onesignal/"
+        },
         promptOptions: {
           slidedown: {
             prompts: [

@@ -130,7 +130,7 @@
           {
             "id": "cG9zdDoxNjQ1",
             "databaseId": 1645,
-            "title": "紅葉露天",
+            "title": "紅葉露天風呂",
             "slug": "紅葉露天",
             "featuredImage": {
               "node": {
@@ -1118,7 +1118,7 @@
           {
             "id": "cG9zdDoxNDEw",
             "databaseId": 1410,
-            "title": "ハートアクション",
+            "title": "ハートアクション（美羽）",
             "slug": "ハートアクション",
             "featuredImage": {
               "node": {
@@ -42613,7 +42613,7 @@
   "latestArtwork": {
     "id": "cG9zdDoxNjQ1",
     "databaseId": 1645,
-    "title": "紅葉露天",
+    "title": "紅葉露天風呂",
     "slug": "紅葉露天",
     "date": "2026-09-30T20:00:00",
     "featuredImage": {
@@ -42632,5 +42632,5 @@
       ]
     }
   },
-  "cachedAt": "2026-09-30T23:33:31.485Z"
+  "cachedAt": "2026-10-01T01:30:38.028Z"
 }
