@@ -5,7 +5,7 @@
  * ViewTransitionsによるシームレスな画面遷移と、PWAとしてのメタデータ・Service Workerの登録をサポートします。
  * SEOやAI検索（SGE/AIO）向けの動的メタデータも統合しています。
  */
-import { ViewTransitions } from 'astro:transitions';
+import { ClientRouter } from 'astro:transitions';
 import '../styles/app.scss';
 
 interface Props {
@@ -57,7 +57,7 @@ const {
     <meta name="twitter:image" content={image} />
     
     <title>{title}</title>
-    <ViewTransitions />
+    <ClientRouter />
 
     <!-- Service Workerの登録とキャッシュ自動更新処理です。 -->
     <script>

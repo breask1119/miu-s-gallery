@@ -358,6 +358,13 @@ const schemaLD = {
     "name": "Miu"
   }
 };
+
+const initialColor = heroSliderList[0]?.color || '#0b0b0b';
+const initialRgb = heroSliderList[0]?.rgb || '11, 11, 11';
+const initialRgbParts = initialRgb.split(',').map((s: string) => parseInt(s.trim(), 10) || 0);
+const initialLuminance = (0.299 * (initialRgbParts[0] || 0) + 0.587 * (initialRgbParts[1] || 0) + 0.114 * (initialRgbParts[2] || 0));
+const initialContrastText = initialLuminance > 145 ? '#060608' : '#ffffff';
+const initialBorderLight = initialLuminance < 70 ? 'rgba(255, 255, 255, 0.28)' : 'transparent';
 ---
 
 <!DOCTYPE html>
@@ -469,6 +476,17 @@ const schemaLD = {
       }
     });
   </script>
+
+  <style is:inline define:vars={{ initialColor, initialRgb, initialContrastText, initialBorderLight }}>
+    :root {
+      --char-accent: var(--initialColor);
+      --char-rgb: var(--initialRgb);
+      --char-accent-rgb: var(--initialRgb);
+      --char-glow: rgba(var(--initialRgb), 0.35);
+      --char-accent-text: var(--initialContrastText);
+      --char-accent-border: var(--initialBorderLight);
+    }
+  </style>
 </head>
 <body class="bg-base text-slate-100 selection:bg-rose-500 selection:text-white">
 
@@ -1544,15 +1562,17 @@ const schemaLD = {
         document.body.classList.toggle('is-subpage', isSubpage);
         document.body.classList.toggle('is-photos-view', isPhotosView);
 
-        // スクロール位置のリセット（モバイル＆PC）
-        window.scrollTo({ top: 0, behavior: 'instant' });
-        const sidePanel = document.getElementById('side-content-panel');
-        if (sidePanel) sidePanel.scrollTop = 0;
         const targetView = document.getElementById(viewId);
         if (targetView) targetView.scrollTop = 0;
 
         document.getElementById('character-floating-dock')?.classList.toggle('visible', isSubpage);
         document.getElementById('side-content-panel')?.classList.toggle('has-floating-dock', isSubpage);
+
+        // PCのサイドパネル内部スクロールのみリセット（画面全体の勝手なスクロールは行わない）
+        if (window.innerWidth > 960) {
+          const sidePanel = document.getElementById('side-content-panel');
+          if (sidePanel) sidePanel.scrollTop = 0;
+        }
       }
 
       // ============================================================
@@ -1793,6 +1813,15 @@ const schemaLD = {
         document.documentElement.style.setProperty('--char-rgb', rgb);
         document.documentElement.style.setProperty('--char-accent-rgb', rgb);
         document.documentElement.style.setProperty('--char-glow', `rgba(${rgb}, 0.35)`);
+
+        // RGBから輝度を計算して文字色（白/黒）と輪郭ボーダーを自動設定
+        const parts = rgb.split(',').map(s => parseInt(s.trim(), 10) || 0);
+        const r = parts[0] || 0, g = parts[1] || 0, b = parts[2] || 0;
+        const luminance = (0.299 * r + 0.587 * g + 0.114 * b);
+        const contrastText = luminance > 145 ? '#060608' : '#ffffff';
+        const borderLight = luminance < 70 ? 'rgba(255, 255, 255, 0.28)' : 'transparent';
+        document.documentElement.style.setProperty('--char-accent-text', contrastText);
+        document.documentElement.style.setProperty('--char-accent-border', borderLight);
       }
 
       // ============================================================

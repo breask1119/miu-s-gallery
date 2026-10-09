@@ -38049,6 +38049,108 @@
       "artworks": {
         "nodes": [
           {
+            "id": "cG9zdDoxNTkw",
+            "databaseId": 1590,
+            "title": "ハートアクション（美ゆず）",
+            "slug": "ハートアクション（美ゆず）",
+            "featuredImage": {
+              "node": {
+                "sourceUrl": "https://api.xx-ai-girls-miu.com/wp-content/uploads/01-42.png",
+                "altText": ""
+              }
+            },
+            "promptData": "",
+            "aiAnalysis": {
+              "summary": "",
+              "sceneTags": [],
+              "fashionTags": [],
+              "appearanceTags": [],
+              "expressionTags": [],
+              "compositionTags": [],
+              "moodTags": [],
+              "allTags": [],
+              "jevDecision": "",
+              "jevOverallQuality": null,
+              "jevCategorySeparation": null,
+              "jevTooDetailed": null,
+              "jevHumanReview": null,
+              "jevResult": "",
+              "jevCheckedAt": ""
+            },
+            "variationImages": {
+              "nodes": []
+            },
+            "aiTags": [],
+            "hasAiTags": false,
+            "hasArtworkImages": true,
+            "normalizedImages": [
+              {
+                "id": 1592,
+                "title": "ハートアクション（美ゆず） 01",
+                "sourceUrl": "http://api.xx-ai-girls-miu.com/wp-content/uploads/01-42.png",
+                "altText": "ハートアクション（美ゆず） 01",
+                "contentRating": "safe",
+                "sortOrder": 1,
+                "galleryVisible": true,
+                "distribution": {
+                  "instagram": true,
+                  "threads": true,
+                  "x": true,
+                  "patreon": "public"
+                }
+              },
+              {
+                "id": 1594,
+                "title": "ハートアクション（美ゆず） 02",
+                "sourceUrl": "http://api.xx-ai-girls-miu.com/wp-content/uploads/02-29.jpg",
+                "altText": "ハートアクション（美ゆず） 02",
+                "contentRating": "safe",
+                "sortOrder": 2,
+                "galleryVisible": true,
+                "distribution": {
+                  "instagram": true,
+                  "threads": true,
+                  "x": true,
+                  "patreon": "public"
+                }
+              }
+            ],
+            "orderedImages": [
+              {
+                "id": 1592,
+                "title": "ハートアクション（美ゆず） 01",
+                "sourceUrl": "http://api.xx-ai-girls-miu.com/wp-content/uploads/01-42.png",
+                "altText": "ハートアクション（美ゆず） 01",
+                "contentRating": "safe",
+                "sortOrder": 1,
+                "galleryVisible": true,
+                "distribution": {
+                  "instagram": true,
+                  "threads": true,
+                  "x": true,
+                  "patreon": "public"
+                }
+              },
+              {
+                "id": 1594,
+                "title": "ハートアクション（美ゆず） 02",
+                "sourceUrl": "http://api.xx-ai-girls-miu.com/wp-content/uploads/02-29.jpg",
+                "altText": "ハートアクション（美ゆず） 02",
+                "contentRating": "safe",
+                "sortOrder": 2,
+                "galleryVisible": true,
+                "distribution": {
+                  "instagram": true,
+                  "threads": true,
+                  "x": true,
+                  "patreon": "public"
+                }
+              }
+            ],
+            "likeCount": 0,
+            "guestComments": []
+          },
+          {
             "id": "cG9zdDoxMDQx",
             "databaseId": 1041,
             "title": "真夏のテニスガール",
@@ -43396,26 +43498,26 @@
     }
   ],
   "latestArtwork": {
-    "id": "cG9zdDoxNTc4",
-    "databaseId": 1578,
-    "title": "ハートアクション（美莱）",
-    "slug": "ハートアクション（美莱）",
-    "date": "2026-10-08T06:00:00",
+    "id": "cG9zdDoxNTkw",
+    "databaseId": 1590,
+    "title": "ハートアクション（美ゆず）",
+    "slug": "ハートアクション（美ゆず）",
+    "date": "2026-10-09T12:00:00",
     "featuredImage": {
       "node": {
-        "sourceUrl": "https://api.xx-ai-girls-miu.com/wp-content/uploads/01-41.png"
+        "sourceUrl": "https://api.xx-ai-girls-miu.com/wp-content/uploads/01-42.png"
       }
     },
     "models": {
       "nodes": [
         {
-          "id": "dGVybToxMQ==",
-          "name": "美莱",
-          "slug": "mirai",
-          "memberColor": "#fa6f00"
+          "id": "dGVybToxMg==",
+          "name": "美ゆず",
+          "slug": "miyuzu",
+          "memberColor": "#00c7fa"
         }
       ]
     }
   },
-  "cachedAt": "2026-10-09T02:26:29.794Z"
+  "cachedAt": "2026-10-09T23:55:18.907Z"
 }
