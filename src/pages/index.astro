@@ -490,10 +490,10 @@ const schemaLD = {
         <span class="brand-text">Miu's <span class="brand-sub">Gallery</span></span>
       </a>
 
-      <!-- View Mode Switcher (GALLERY / EXPLORE) -->
+      <!-- View Mode Switcher (ギャラリー / 無限モード) -->
       <div class="view-mode-toggle" id="view-mode-toggle" role="tablist" aria-label="閲覧モード切替">
-        <button class="mode-tab-btn active" id="mode-tab-gallery" role="tab" aria-selected="true" data-mode="gallery">GALLERY</button>
-        <button class="mode-tab-btn" id="mode-tab-explore" role="tab" aria-selected="false" data-mode="explore">EXPLORE</button>
+        <button class="mode-tab-btn active" id="mode-tab-gallery" role="tab" aria-selected="true" data-mode="gallery">ギャラリー</button>
+        <button class="mode-tab-btn" id="mode-tab-explore" role="tab" aria-selected="false" data-mode="explore">無限モード</button>
       </div>
 
       <div class="floating-social-links">
@@ -764,16 +764,16 @@ const schemaLD = {
               <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
               <line x1="7" y1="7" x2="7.01" y2="7"></line>
             </svg>
-            <span>TAGS</span>
+            <span>タグ</span>
           </button>
 
           <!-- Back to GALLERY Mode -->
-          <button id="explore-close-btn" class="explore-btn-pill explore-close" aria-label="GALLERYモードに戻る (Esc)">
+          <button id="explore-close-btn" class="explore-btn-pill explore-close" aria-label="ギャラリーモードに戻る (Esc)">
             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="18" y1="6" x2="6" y2="18"></line>
               <line x1="6" y1="6" x2="18" y2="18"></line>
             </svg>
-            <span>GALLERY</span>
+            <span>ギャラリー</span>
           </button>
         </div>
       </header>
@@ -822,24 +822,27 @@ const schemaLD = {
     <!-- First-Time Exploration Gesture Hint -->
     <div class="explore-hint-overlay" id="explore-hint-overlay" style="display: none;">
       <div class="explore-hint-box">
-        <h3 class="explore-hint-title">EXPLORE GESTURES</h3>
+        <div class="explore-hint-topbar">
+          <h3 class="explore-hint-title">無限モードの操作ガイド</h3>
+          <button class="explore-hint-close-top" id="explore-hint-close-top" aria-label="閉じる">✕</button>
+        </div>
         <!-- Smartphone Instructions -->
         <div class="explore-hint-grid sp-hint">
-          <div class="hint-item"><span class="hint-icon">← →</span><span>写真をめくる</span></div>
-          <div class="hint-item"><span class="hint-icon">↑ ↓</span><span>モデル切替</span></div>
-          <div class="hint-item"><span class="hint-icon">♡♡</span><span>ダブルタップでお気に入り</span></div>
-          <div class="hint-item"><span class="hint-icon">👆長押し</span><span>AIタグ・作品情報</span></div>
+          <div class="hint-item"><span class="hint-icon">← →</span><span>写真をめくる（無限ループ）</span></div>
+          <div class="hint-item"><span class="hint-icon">↑ ↓</span><span>モデル切替（縦スワイプ）</span></div>
+          <div class="hint-item"><span class="hint-icon">♡♡</span><span>ダブルタップでいいね</span></div>
+          <div class="hint-item"><span class="hint-icon">👆長押し</span><span>AIタグ・作品詳細</span></div>
           <div class="hint-item"><span class="hint-icon">1タップ</span><span>UI表示 / 非表示</span></div>
         </div>
         <!-- PC Instructions -->
         <div class="explore-hint-grid pc-hint">
           <div class="hint-item"><kbd>←</kbd> <kbd>→</kbd> / ホイール<span>写真をめくる</span></div>
           <div class="hint-item"><kbd>↑</kbd> <kbd>↓</kbd><span>モデル切替</span></div>
-          <div class="hint-item"><kbd>F</kbd> / ダブルクリック<span>お気に入り</span></div>
-          <div class="hint-item"><kbd>T</kbd><span>AIタグ・作品情報</span></div>
-          <div class="hint-item"><kbd>Esc</kbd><span>EXPLORE終了</span></div>
+          <div class="hint-item"><kbd>F</kbd> / ダブルクリック<span>いいね</span></div>
+          <div class="hint-item"><kbd>T</kbd><span>AIタグ・作品詳細</span></div>
+          <div class="hint-item"><kbd>Esc</kbd><span>ギャラリーに戻る</span></div>
         </div>
-        <button class="explore-hint-ok" id="explore-hint-ok-btn">GOT IT</button>
+        <button class="explore-hint-ok" id="explore-hint-ok-btn">はじめる</button>
       </div>
     </div>
   </section>
@@ -2351,6 +2354,7 @@ const schemaLD = {
       // ヒントオーバーレイ DOM
       const exploreHintOverlay = document.getElementById('explore-hint-overlay');
       const exploreHintOkBtn = document.getElementById('explore-hint-ok-btn');
+      const exploreHintCloseTop = document.getElementById('explore-hint-close-top');
 
       // モード切替タブ DOM
       const modeTabGallery = document.getElementById('mode-tab-gallery');
@@ -2396,10 +2400,16 @@ const schemaLD = {
         sheetBackdrop?.addEventListener('click', closeExploreTagsSheet);
         sheetCloseBtn?.addEventListener('click', closeExploreTagsSheet);
 
-        // 操作ヒント OK ボタン
-        exploreHintOkBtn?.addEventListener('click', () => {
+        // 操作ヒント閉じる処理 (ボタン・右上の✕・背景タップ)
+        const closeExploreHint = () => {
           if (exploreHintOverlay) exploreHintOverlay.style.display = 'none';
           localStorage.setItem('miu_explore_hint_seen', 'true');
+        };
+
+        exploreHintOkBtn?.addEventListener('click', closeExploreHint);
+        exploreHintCloseTop?.addEventListener('click', closeExploreHint);
+        exploreHintOverlay?.addEventListener('click', (e) => {
+          if (e.target === exploreHintOverlay) closeExploreHint();
         });
 
         // モバイルタッチジェスチャー設定
@@ -2486,7 +2496,7 @@ const schemaLD = {
         }
       }
 
-      function setExplorePhoto(index, dir = 0) {
+      function setExplorePhoto(index, dirX = 0, dirY = 0) {
         if (!allPhotosFlat || allPhotosFlat.length === 0) return;
 
         // 無限ループインデックスの計算
@@ -2502,14 +2512,32 @@ const schemaLD = {
         // ズーム解除
         resetExploreZoom();
 
-        // 画像切り替えとフェード
+        // 画像切り替えとシネマティックフェード＆スライド演出
         if (exploreCurrentImg) {
-          exploreCurrentImg.style.opacity = '0.3';
+          const exitX = dirX !== 0 ? dirX * -20 : 0;
+          const exitY = dirY !== 0 ? dirY * -24 : 0;
+          exploreCurrentImg.style.transition = 'opacity 0.15s ease-out, transform 0.15s ease-out';
+          exploreCurrentImg.style.opacity = '0.05';
+          exploreCurrentImg.style.transform = `translate3d(${exitX}px, ${exitY}px, 0) scale(0.98)`;
+
           setTimeout(() => {
             exploreCurrentImg.src = photo.image;
-            exploreCurrentImg.style.opacity = '1';
-          }, 60);
+
+            const enterX = dirX !== 0 ? dirX * 24 : 0;
+            const enterY = dirY !== 0 ? dirY * 28 : 0;
+            exploreCurrentImg.style.transition = 'none';
+            exploreCurrentImg.style.transform = `translate3d(${enterX}px, ${enterY}px, 0) scale(0.98)`;
+
+            requestAnimationFrame(() => {
+              requestAnimationFrame(() => {
+                exploreCurrentImg.style.transition = 'opacity 0.28s cubic-bezier(0.22, 1, 0.36, 1), transform 0.28s cubic-bezier(0.22, 1, 0.36, 1)';
+                exploreCurrentImg.style.opacity = '1';
+                exploreCurrentImg.style.transform = 'translate3d(0, 0, 0) scale(1)';
+              });
+            });
+          }, 130);
         }
+
         if (exploreBlurImg) {
           exploreBlurImg.src = photo.image;
         }
@@ -2545,11 +2573,11 @@ const schemaLD = {
       }
 
       function nextExplorePhoto() {
-        setExplorePhoto(exploreState.photoIndex + 1, 1);
+        setExplorePhoto(exploreState.photoIndex + 1, 1, 0);
       }
 
       function prevExplorePhoto() {
-        setExplorePhoto(exploreState.photoIndex - 1, -1);
+        setExplorePhoto(exploreState.photoIndex - 1, -1, 0);
       }
 
       function nextExploreModel() {
@@ -2561,7 +2589,7 @@ const schemaLD = {
 
         const targetPhotoIdx = allPhotosFlat.findIndex(p => p.characterId === nextModel.id);
         if (targetPhotoIdx !== -1) {
-          setExplorePhoto(targetPhotoIdx, 1);
+          setExplorePhoto(targetPhotoIdx, 0, 1);
         }
       }
 
@@ -2574,7 +2602,7 @@ const schemaLD = {
 
         const targetPhotoIdx = allPhotosFlat.findIndex(p => p.characterId === prevModel.id);
         if (targetPhotoIdx !== -1) {
-          setExplorePhoto(targetPhotoIdx, -1);
+          setExplorePhoto(targetPhotoIdx, 0, -1);
         }
       }
 
@@ -2853,6 +2881,11 @@ const schemaLD = {
           // Esc
           if (e.key === 'Escape') {
             e.preventDefault();
+            if (exploreHintOverlay && exploreHintOverlay.style.display !== 'none') {
+              exploreHintOverlay.style.display = 'none';
+              localStorage.setItem('miu_explore_hint_seen', 'true');
+              return;
+            }
             if (exploreState.tagsOpen) {
               closeExploreTagsSheet();
             } else {
