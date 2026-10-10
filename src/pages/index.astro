@@ -515,6 +515,13 @@ const initialBorderLight = initialLuminance < 70 ? 'rgba(255, 255, 255, 0.28)' :
       </div>
 
       <div class="floating-social-links">
+        <!-- X (Twitter) -->
+        <a href="https://x.com/xx_ai_girls_miu" target="_blank" rel="noopener noreferrer" class="social-icon-btn x-btn" aria-label="X (Twitter)">
+          <svg class="social-svg-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+          </svg>
+        </a>
+
         <!-- Instagram -->
         <a href="https://www.instagram.com/xx.ai.girls.miu0402/" target="_blank" rel="noopener noreferrer" class="social-icon-btn instagram-btn" aria-label="Instagram">
           <svg class="social-svg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -986,8 +993,38 @@ const initialBorderLight = initialLuminance < 70 ? 'rgba(255, 255, 255, 0.28)' :
           <li><strong>キーボード操作:</strong> <kbd>Esc</kbd> で1階層戻る / モーダルを閉じる、<kbd>←</kbd> <kbd>→</kbd> で写真送り。</li>
         </ul>
 
+        <!-- Official Social Links -->
+        <div class="mt-6 pt-5 border-t border-white/10">
+          <h4 style="font-size: 0.75rem; font-weight: 600; color: #94a3b8; letter-spacing: 0.08em; margin-bottom: 0.75rem; text-transform: uppercase;">Official Links</h4>
+          <div class="grid grid-cols-3 gap-2">
+            <!-- X (Twitter) -->
+            <a href="https://x.com/xx_ai_girls_miu" target="_blank" rel="noopener noreferrer" class="flex flex-col items-center justify-center p-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition group text-center">
+              <svg class="w-4 h-4 text-white mb-1 group-hover:scale-110 transition-transform" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+              </svg>
+              <span class="text-[10px] text-gray-300 font-medium">X</span>
+            </a>
+            <!-- Instagram -->
+            <a href="https://www.instagram.com/xx.ai.girls.miu0402/" target="_blank" rel="noopener noreferrer" class="flex flex-col items-center justify-center p-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition group text-center">
+              <svg class="w-4 h-4 text-pink-400 mb-1 group-hover:scale-110 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
+                <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
+                <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
+              </svg>
+              <span class="text-[10px] text-gray-300 font-medium">Instagram</span>
+            </a>
+            <!-- Patreon -->
+            <a href="https://www.patreon.com/cw/u73055670?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_creator&utm_content=copyLink" target="_blank" rel="noopener noreferrer" class="flex flex-col items-center justify-center p-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition group text-center">
+              <svg class="w-4 h-4 text-rose-400 mb-1 group-hover:scale-110 transition-transform" viewBox="0 0 1080 1080" fill="currentColor">
+                <path d="M1033.05,324.45c-0.19-137.9-107.59-250.92-233.6-291.7c-156.48-50.64-362.86-43.3-512.28,27.2 C106.07,145.41,49.18,332.61,47.06,519.31c-1.74,153.5,13.58,557.79,241.62,560.67c169.44,2.15,194.67-216.18,273.07-321.33 c55.78-74.81,127.6-95.94,216.01-117.82C929.71,603.22,1033.27,483.3,1033.05,324.45z"></path>
+              </svg>
+              <span class="text-[10px] text-gray-300 font-medium">Patreon</span>
+            </a>
+          </div>
+        </div>
+
         <!-- PWA Manual Trigger in About Modal -->
-        <div class="mt-6 pt-5 border-t border-white/10 flex flex-col gap-2">
+        <div class="mt-4 pt-4 border-t border-white/10 flex flex-col gap-2">
           <button id="about-pwa-btn" type="button" class="w-full flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl bg-gradient-to-r from-rose-500/20 to-pink-500/20 hover:from-rose-500/30 hover:to-pink-500/30 border border-rose-500/30 text-rose-300 hover:text-white font-medium text-xs transition-all">
             <svg class="w-4 h-4 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
@@ -1288,6 +1325,31 @@ const initialBorderLight = initialLuminance < 70 ? 'rgba(255, 255, 255, 0.28)' :
         });
       }
 
+      // ============================================================
+      // SCROLL-TRIGGERED FLOATING HEADER
+      // ============================================================
+      function checkTopBarVisibility() {
+        const topBar = document.getElementById('floating-top-bar');
+        if (!topBar) return;
+
+        const isSubpage = document.body.classList.contains('is-subpage');
+        const scrollY = window.pageYOffset || document.documentElement.scrollTop || 0;
+        const panelScrollY = document.getElementById('side-content-panel')?.scrollTop || 0;
+
+        // サブページ表示中、または30px以上スクロールした時に表示
+        if (scrollY > 30 || panelScrollY > 30 || isSubpage) {
+          topBar.classList.add('is-visible');
+        } else {
+          topBar.classList.remove('is-visible');
+        }
+      }
+
+      function initScrollHeader() {
+        window.addEventListener('scroll', checkTopBarVisibility, { passive: true });
+        document.getElementById('side-content-panel')?.addEventListener('scroll', checkTopBarVisibility, { passive: true });
+        checkTopBarVisibility();
+      }
+
       function initApp() {
         bindCharactersViewEvents();
         initFloatingDock();
@@ -1300,6 +1362,7 @@ const initialBorderLight = initialLuminance < 70 ? 'rgba(255, 255, 255, 0.28)' :
         initLikesAndComments();
         initPwaPrompt();
         initExploreMode();
+        initScrollHeader();
 
         // 初期表示: ホーム画面（Hero Slider開始）
         showCharactersView();
@@ -1562,17 +1625,23 @@ const initialBorderLight = initialLuminance < 70 ? 'rgba(255, 255, 255, 0.28)' :
         document.body.classList.toggle('is-subpage', isSubpage);
         document.body.classList.toggle('is-photos-view', isPhotosView);
 
+        // スマホでは画面全体のスクロール位置を最上部（Y = 0）に確実にリセット
+        // これにより、どのキャラクターをスクロールしてタップしても画面が下へズレずに統一して表示される
+        if (window.innerWidth <= 960) {
+          window.scrollTo({ top: 0, behavior: 'instant' });
+        } else {
+          const sidePanel = document.getElementById('side-content-panel');
+          if (sidePanel) sidePanel.scrollTop = 0;
+        }
+
         const targetView = document.getElementById(viewId);
         if (targetView) targetView.scrollTop = 0;
 
         document.getElementById('character-floating-dock')?.classList.toggle('visible', isSubpage);
         document.getElementById('side-content-panel')?.classList.toggle('has-floating-dock', isSubpage);
 
-        // PCのサイドパネル内部スクロールのみリセット（画面全体の勝手なスクロールは行わない）
-        if (window.innerWidth > 960) {
-          const sidePanel = document.getElementById('side-content-panel');
-          if (sidePanel) sidePanel.scrollTop = 0;
-        }
+        // ヘッダーのスクロール可視状態を再判定
+        checkTopBarVisibility();
       }
 
       // ============================================================
@@ -2459,7 +2528,13 @@ const initialBorderLight = initialLuminance < 70 ? 'rgba(255, 255, 255, 0.28)' :
           if (mode === 'explore') {
             if (!exploreState.active) switchViewMode('explore', false);
           } else {
-            if (exploreState.active) switchViewMode('gallery', false);
+            if (exploreState.active) {
+              switchViewMode('gallery', false);
+              showCharactersView();
+              if (window.innerWidth <= 960) {
+                window.scrollTo({ top: 0, behavior: 'instant' });
+              }
+            }
           }
         });
       }
